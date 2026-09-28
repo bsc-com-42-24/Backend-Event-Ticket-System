@@ -88,9 +88,29 @@ Member 2 contribution
 
 [Member 3 contribution]
 
+ID	Requirement
+FR-EVENT-01	The system shall allow an authorized Event Manager to create an event.
+FR-EVENT-02	The system shall require essential event information such as title, description, venue/location, dates and capacity.
+FR-EVENT-03	The system shall allow an authorized Event Manager to view events they manage.
+FR-EVENT-04	The system shall make published events available for customer discovery.
+FR-EVENT-05	The system shall allow users to view event details.
+FR-EVENT-06	The system shall allow an authorized Event Manager to update an event.
+FR-EVENT-07	The system shall allow an authorized Event Manager to cancel an event.
+FR-EVENT-08	The system shall allow an authorized Event Manager to publish an event.
+FR-EVENT-09	The system shall prevent unauthorized users from managing events.
+FR-EVENT-10	The system shall support DRAFT, PUBLISHED and CANCELLED event statuses.
+
 ## 7.3 Event Capacity and Availability
 
 [Member 3 contribution]
+Functional requirements
+ID	Requirement
+FR-CAP-01	The system shall store the maximum ticket capacity for each event.
+FR-CAP-02	The system shall track the number of tickets issued for an event.
+FR-CAP-03	The system shall provide remaining ticket availability.
+FR-CAP-04	The system shall prevent ticket purchases when event capacity has been reached.
+FR-CAP-05	The system shall maintain correct capacity when multiple customers purchase tickets at the same time.
+FR-CAP-06	The system shall not allow remaining availability to become negative.
 
 ## 7.4 Ticket Purchase
 
