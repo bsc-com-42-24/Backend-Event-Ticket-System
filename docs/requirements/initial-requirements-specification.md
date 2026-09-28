@@ -74,7 +74,15 @@ Ticket Master is a backend event ticketing system that allows event managers to 
 
 ## 7.1 Authentication and User Management
 
-[Member 2 contribution]
+Member 2 contribution
+
+- A user's email address shall be unique.
+- Passwords shall not be stored as plain text.
+- A user must provide valid credentials to authenticate.
+- Protected operations require authentication.
+- Access to protected operations shall depend on the user's assigned role.
+- Users shall not be allowed to change their role through normal customer operations.
+- Invalid authentication credentials shall not result in successful login.
 
 ## 7.2 Event Management
 
@@ -145,8 +153,23 @@ Ticket Master is a backend event ticketing system that allows event managers to 
 # 9. Use Cases
 
 ## 9.1 User Registration
+Actor: Customer, Event Manager, Validator or Administrator
+
+Description: 
+The user provides the required registration information. The system validates the information, checks whether the email is already registered, securely stores the password and creates the user account.
+
+Expected Result:
+A new user account is successfully created.
 
 ## 9.2 User Login
+
+Actor: Registered User
+
+Description:  
+The user provides their email and password. The system verifies the credentials and, if valid, generates an authentication token.
+
+Expected Result:  
+The user is authenticated and receives a JWT that can be used to access authorized protected endpoints.
 
 ## 9.3 Create Event
 
@@ -166,7 +189,15 @@ Ticket Master is a backend event ticketing system that allows event managers to 
 
 # 10. Business Rules
 
-[List the rules that control how the system must behave.]
+### Authentication and User Rules
+
+- A user's email address shall be unique.
+- Passwords shall not be stored as plain text.
+- A user must provide valid credentials to authenticate.
+- Protected operations require authentication.
+- Access to protected operations shall depend on the user's assigned role.
+- Users shall not be allowed to change their role through normal customer operations.
+- Invalid authentication credentials shall not result in successful login.
 
 ---
 
