@@ -115,10 +115,27 @@ FR-CAP-06	The system shall not allow remaining availability to become negative.
 ## 7.4 Ticket Purchase
 
 [Member 4 contribution]
+The system shall allow an authenticated customer to purchase a ticket for an eligible event.
+The system shall verify that the requested event exists.
+The system shall verify that the event is available for ticket sales.
+The system shall verify that capacity is available before creating a ticket.
+The system shall associate each ticket with the customer who purchased it.
+The system shall associate each ticket with the selected event.
+The system shall generate a unique and secure ticket identifier.
+The system shall assign the correct initial ticket status after successful purchase.
+The system shall return relevant ticket details after successful purchase.
+The system shall not create a ticket when the event has reached capacity.
 
 ## 7.5 Ticket and QR Management
 
 [Member 4 contribution]
+The system shall provide a QR-code representation for a valid ticket.
+The QR code shall represent a secure ticket identifier or server-verifiable value.
+The system shall allow customers to retrieve their tickets.
+The system shall allow authorized customers to view ticket details.
+The system shall support ticket statuses such as ACTIVE, USED, CANCELLED and EXPIRED where applicable.
+The system shall record the time a ticket was issued.
+The system shall record the time a ticket was used when validation succeeds.
 
 ## 7.6 Ticket Validation
 
