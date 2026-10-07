@@ -1,4 +1,8 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { QueryFailedError } from 'typeorm';
@@ -87,6 +91,17 @@ describe('AuthService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it("rejects passwords exceeding bcrypt's byte limit before hashing", async () => {
+    await expect(
+      authService.register({
+        name: 'Customer',
+        email: 'customer@example.com',
+        password: 'é'.repeat(37),
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(usersService.create).not.toHaveBeenCalled();
+  });
+
   it('authenticates a valid password', async () => {
     const passwordHash = await bcrypt.hash('correct horse battery', 4);
     usersService.findByEmail.mockResolvedValue({ ...user, passwordHash });
@@ -100,6 +115,40 @@ describe('AuthService', () => {
     expect(usersService.findByEmail).toHaveBeenCalledWith(
       'customer@example.com',
     );
+  });
+
+  it('includes the persisted role in the JWT payload', async () => {
+    const eventManager = { ...user, role: UserRole.EVENT_MANAGER };
+    usersService.findByEmail.mockResolvedValue({
+      ...eventManager,
+      passwordHash: await bcrypt.hash('correct horse battery', 4),
+    });
+
+    await authService.login({
+      email: eventManager.email,
+      password: 'correct horse battery',
+    });
+
+    expect(jwtService.signAsync).toHaveBeenCalledWith({
+      sub: eventManager.id,
+      email: eventManager.email,
+      role: UserRole.EVENT_MANAGER,
+    });
+  });
+
+  it('rejects an incorrect password for an existing user', async () => {
+    usersService.findByEmail.mockResolvedValue({
+      ...user,
+      passwordHash: await bcrypt.hash('correct horse battery', 4),
+    });
+
+    await expect(
+      authService.login({
+        email: user.email,
+        password: 'incorrect password',
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(jwtService.signAsync).not.toHaveBeenCalled();
   });
 
   it('rejects invalid credentials with a generic response', async () => {
