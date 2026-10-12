@@ -1,9 +1,0 @@
-node_modules/
-dist/
-coverage/
-*.tsbuildinfo
-*.log
-npm-debug.log*
-.env
-.env.*
-!.env.example
