@@ -96,23 +96,23 @@ The system shall record the time a ticket was used when validation succeeds.
 
 ##  Security
 
-[Member 2 contribution]
+NFR-001 Security: authentication, authorization, password hashing and protected secrets
 
 ##  Performance
 
-[Team contribution]
+NFR-009 Performance: normal API operations should respond efficiently under expected project loads
 
 ##  Reliability
 
-[Member 5 contribution]
+NFR-003 Reliability: validation must produce deterministic results and prevent duplicate entry
 
 ##  Data Integrity
 
-[Member 3 and Member 4 contribution]
+NFR-002 Data integrity: ticket issuance must respect event capacity
 
 ##  Maintainability
 
-[Member 1 contribution]
+NFR-004 Maintainability: modular NestJS architecture and readable code
 
 ##  Scalability
 
