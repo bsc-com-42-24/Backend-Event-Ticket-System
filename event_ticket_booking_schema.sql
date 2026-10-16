@@ -147,12 +147,19 @@ CREATE TABLE IF NOT EXISTS tickets (
 -- TICKET VALIDATIONS: history of scan/check-in attempts.
 CREATE TABLE IF NOT EXISTS ticket_validations (
     validation_id     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    ticket_id         BIGINT NOT NULL REFERENCES tickets(ticket_id) ON DELETE RESTRICT,
+    ticket_id         BIGINT REFERENCES tickets(ticket_id) ON DELETE RESTRICT,
     checked_by        BIGINT REFERENCES users(user_id) ON DELETE SET NULL,
-    result            VARCHAR(20) NOT NULL
-                      CHECK (result IN ('ACCEPTED', 'ALREADY_USED', 'CANCELLED', 'REFUNDED', 'INVALID')),
+    attempted_event_id VARCHAR(30),
+    result            VARCHAR(20) NOT NULL CHECK (result IN ('ACCEPTED', 'REJECTED')),
+    reason            VARCHAR(30),
     scanned_at        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    notes             TEXT
+    notes             TEXT,
+    CHECK (
+        (result = 'ACCEPTED' AND reason IS NULL)
+        OR (result = 'REJECTED' AND reason IN (
+            'NOT_FOUND', 'ALREADY_USED', 'CANCELLED', 'WRONG_EVENT', 'EVENT_CANCELLED'
+        ))
+    )
 );
 
 -- AUDIT LOG: optional history for important administrative/system actions.
@@ -177,7 +184,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_event_status ON tickets(event_id, status);
 CREATE INDEX IF NOT EXISTS idx_tickets_owner ON tickets(owner_id);
 CREATE INDEX IF NOT EXISTS idx_validations_ticket_scanned ON ticket_validations(ticket_id, scanned_at DESC);
+CREATE INDEX IF NOT EXISTS idx_validations_scanned ON ticket_validations(scanned_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
 
 COMMIT;
-
