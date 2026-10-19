@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS events (
     title             VARCHAR(200) NOT NULL,
     description       TEXT,
     category          VARCHAR(100),
+    venue             VARCHAR(150),
+    location          VARCHAR(255),
+    capacity          INTEGER NOT NULL DEFAULT 0 CHECK (capacity >= 0),
+    tickets_issued    INTEGER NOT NULL DEFAULT 0 CHECK (tickets_issued >= 0),
     event_type        VARCHAR(20) NOT NULL DEFAULT 'IN_PERSON'
                       CHECK (event_type IN ('IN_PERSON', 'ONLINE', 'HYBRID')),
     online_event_url  TEXT,
@@ -44,9 +48,12 @@ CREATE TABLE IF NOT EXISTS events (
     status            VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
                       CHECK (status IN ('DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED')),
     banner_url        TEXT,
+    published_at      TIMESTAMPTZ,
+    cancelled_at      TIMESTAMPTZ,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CHECK (end_at > start_at),
+    CHECK (tickets_issued <= capacity),
     CHECK (sales_end_at IS NULL OR sales_start_at IS NULL OR sales_end_at > sales_start_at),
     CHECK (event_type <> 'ONLINE' OR online_event_url IS NOT NULL)
 );
