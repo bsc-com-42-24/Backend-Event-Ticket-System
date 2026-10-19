@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { environmentValidationSchema } from './config/environment.validation';
 import { UsersModule } from './users/users.module';
+import { TicketPurchasesModule } from './ticket-purchases/ticket-purchases.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module';
     }),
     UsersModule,
     AuthModule,
+    TicketPurchasesModule,
     EventsModule,
     CapacityModule,
   ],
