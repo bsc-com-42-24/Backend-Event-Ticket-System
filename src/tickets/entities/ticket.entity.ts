@@ -1,36 +1,51 @@
-import {Entity,PrimaryGeneratedColumn,Column,CreateDateColumn,} from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 export enum TicketStatus {
-ACTIVE = 'ACTIVE',
-USED = 'USED',
-CANCELLED = 'CANCELLED',
-EXPIRED = 'EXPIRED',
+  ISSUED = 'ISSUED',
+  USED = 'USED',
+  CANCELLED = 'CANCELLED',
+  REFUNDED = 'REFUNDED',
 }
 
+/** Maps the `tickets` table of event_ticket_booking_schema.sql. */
 @Entity('tickets')
 export class Ticket {
-@PrimaryGeneratedColumn('uuid')
-id?: string;
+  @PrimaryGeneratedColumn('identity', {
+    name: 'ticket_id',
+    type: 'bigint',
+    generatedIdentity: 'ALWAYS',
+  })
+  id: string;
 
-@Column({ type: 'uuid', unique: true })
-ticketIdentifier?: string;
+  @Column({ name: 'ticket_number', type: 'varchar', length: 50 })
+  ticketNumber: string;
 
-@Column({ type: 'uuid' })
-customerId?: string;
+  @Column({ name: 'order_item_id', type: 'bigint' })
+  orderItemId: string;
 
-@Column({ type: 'uuid' })
-eventId?: string;
+  @Column({ name: 'event_id', type: 'bigint' })
+  eventId: string;
 
-@Column({
-type: 'enum',
-enum: TicketStatus,
-default: TicketStatus.ACTIVE,
-})
-status?: TicketStatus;
+  @Column({ name: 'ticket_type_id', type: 'bigint' })
+  ticketTypeId: string;
 
-@CreateDateColumn()
-issuedAt?: Date;
+  @Column({ name: 'owner_id', type: 'bigint' })
+  ownerId: string;
 
-@Column({ type: 'timestamp', nullable: true })
-usedAt?: Date | null;
+  @Column({ name: 'qr_token', type: 'uuid' })
+  qrToken: string;
+
+  @Column({ type: 'varchar', length: 20, default: TicketStatus.ISSUED })
+  status: TicketStatus;
+
+  @CreateDateColumn({ name: 'issued_at', type: 'timestamptz' })
+  issuedAt: Date;
+
+  @Column({ name: 'checked_in_at', type: 'timestamptz', nullable: true })
+  checkedInAt: Date | null;
 }

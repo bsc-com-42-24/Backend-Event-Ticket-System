@@ -1,42 +1,59 @@
-import {Controller,Get,Param,} from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseIntPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { AuthenticatedUser } from '../auth/auth.types';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { UserRole } from '../users/user-role.enum';
 import { TicketsService } from './tickets.service';
+
 @ApiTags('Tickets')
+@ApiBearerAuth()
 @Controller('tickets')
+@UseGuards(JwtAuthGuard)
 export class TicketsController {
- constructor(
- private readonly ticketsService: TicketsService,
- ) {}
- /**
- * GET /tickets/:ticketIdentifier
- */
-        @Get(':ticketIdentifier')
-         @ApiOperation({ summary: 'Retrieve a ticket by its identifier' })
-        @ApiParam({
-            name: 'ticketIdentifier',
-            description: 'Unique identifier of the ticket',
- })
- @ApiResponse({ status: 200, description: 'Ticket retrieved successfully' })
- @ApiResponse({ status: 404, description: 'Ticket not found' })
-        async getTicket(
- @Param('ticketIdentifier') ticketIdentifier: string,
- ) {
- return this.ticketsService.getTicket(ticketIdentifier);
- }
- /**
- * GET /tickets/:ticketIdentifier/qr
- */
- @Get(':ticketIdentifier/qr')
- @ApiOperation({ summary: 'Generate a QR code for a ticket' })
- @ApiParam({
-     name: 'ticketIdentifier',
-    description: 'Unique identifier of the ticket',
- })
- @ApiResponse({ status: 200, description: 'QR code generated successfully' })
- @ApiResponse({ status: 404, description: 'Ticket not found' })
- async getTicketQrCode(
- @Param('ticketIdentifier') ticketIdentifier: string,
- ) {
- return this.ticketsService.getTicketWithQrCode(ticketIdentifier);
- }
+  constructor(private readonly ticketsService: TicketsService) {}
+
+  // static routes stay above ':ticketNumber'
+  @Get('mine')
+  @ApiOperation({ summary: 'List my tickets' })
+  findMine(@CurrentUser() user: AuthenticatedUser) {
+    return this.ticketsService.findMine(user);
+  }
+
+  @Post('orders/:orderId/pay')
+  @HttpCode(200)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Temporary: mark an order PAID and issue its tickets (admin)' })
+  payOrder(@Param('orderId', ParseIntPipe) orderId: number) {
+    return this.ticketsService.payOrder(orderId);
+  }
+
+  @Get(':ticketNumber')
+  @ApiOperation({ summary: 'Get one of my tickets' })
+  getTicket(
+    @Param('ticketNumber') ticketNumber: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ticketsService.getTicket(ticketNumber, user);
+  }
+
+  @Get(':ticketNumber/qr')
+  @ApiOperation({ summary: 'Get my ticket with its QR code (PNG data URL)' })
+  getTicketQrCode(
+    @Param('ticketNumber') ticketNumber: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ticketsService.getTicketWithQrCode(ticketNumber, user);
+  }
 }

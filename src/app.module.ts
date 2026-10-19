@@ -4,10 +4,12 @@ import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { CapacityModule } from './capacity/capacity.module';
 import { environmentValidationSchema } from './config/environment.validation';
-import { UsersModule } from './users/users.module';
-import { TicketsController } from './tickets/tickets.controller';
+import { EventsModule } from './events/events.module';
+import { TicketPurchasesModule } from './ticket-purchases/ticket-purchases.module';
 import { TicketsModule } from './tickets/tickets.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -32,9 +34,12 @@ import { TicketsModule } from './tickets/tickets.module';
     }),
     UsersModule,
     AuthModule,
+    EventsModule,
+    CapacityModule,
+    TicketPurchasesModule,
     TicketsModule,
   ],
-  controllers: [AppController, TicketsController],
+  controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}
