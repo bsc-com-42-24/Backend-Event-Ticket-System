@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: ticket_master
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ./event_ticket_booking_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
       - dbdata:/var/lib/postgresql/data
