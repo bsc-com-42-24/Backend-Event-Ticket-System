@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { CapacityModule } from './capacity/capacity.module';
+import { EventsModule } from './events/events.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -30,6 +32,8 @@ import { UsersModule } from './users/users.module';
     }),
     UsersModule,
     AuthModule,
+    EventsModule,
+    CapacityModule,
   ],
   controllers: [AppController],
   providers: [AppService],
