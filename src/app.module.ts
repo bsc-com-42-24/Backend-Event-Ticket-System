@@ -6,6 +6,8 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { environmentValidationSchema } from './config/environment.validation';
 import { UsersModule } from './users/users.module';
+import { TicketsController } from './tickets/tickets.controller';
+import { TicketsModule } from './tickets/tickets.module';
 
 @Module({
   imports: [
@@ -30,8 +32,9 @@ import { UsersModule } from './users/users.module';
     }),
     UsersModule,
     AuthModule,
+    TicketsModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, TicketsController],
   providers: [AppService],
 })
 export class AppModule {}
