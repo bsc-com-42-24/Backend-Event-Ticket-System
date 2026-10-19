@@ -25,7 +25,7 @@ export class CapacityService {
       ticketsIssued: e.ticketsIssued,
       remainingTickets: remaining,
       soldOut: remaining === 0,
-      salesOpen: e.status === EventStatus.PUBLISHED && e.endDate > new Date() && remaining > 0,
+      salesOpen: e.status === EventStatus.PUBLISHED && e.endAt > new Date() && remaining > 0,
     };
   }
 
@@ -50,9 +50,9 @@ export class CapacityService {
       .createQueryBuilder()
       .update(Event)
       .set({ ticketsIssued: () => 'tickets_issued + :qty' })
-      .where('id = :id', { id: eventId })
+      .where('event_id = :id', { id: eventId })
       .andWhere('status = :status', { status: EventStatus.PUBLISHED })
-      .andWhere('end_date > NOW()')
+      .andWhere('end_at > NOW()')
       .andWhere('tickets_issued + :qty <= capacity')
       .setParameters({ qty: quantity })
       .execute();
@@ -70,7 +70,7 @@ export class CapacityService {
       .createQueryBuilder()
       .update(Event)
       .set({ ticketsIssued: () => 'tickets_issued - :qty' })
-      .where('id = :id', { id: eventId })
+      .where('event_id = :id', { id: eventId })
       .andWhere('tickets_issued >= :qty')
       .setParameters({ qty: quantity })
       .execute();
@@ -92,7 +92,7 @@ export class CapacityService {
     if (e.status !== EventStatus.PUBLISHED) {
       throw new ConflictException(`Tickets are not on sale: event is ${e.status}`);
     }
-    if (e.endDate <= new Date()) throw new ConflictException('Tickets are not on sale: event has ended');
+    if (e.endAt <= new Date()) throw new ConflictException('Tickets are not on sale: event has ended');
     const remaining = e.capacity - e.ticketsIssued;
     throw new ConflictException(
       remaining <= 0 ? 'Event is sold out' : `Only ${remaining} ticket(s) remaining`,

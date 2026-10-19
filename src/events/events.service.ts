@@ -24,15 +24,15 @@ export class EventsService {
 
   // FR-EVENT-01, 02, 10 — new events always start as DRAFT, owned by the creator
   async create(dto: CreateEventDto, user: AuthUser) {
-    this.validateDates(dto.startDate, dto.endDate);
-    if (dto.startDate <= new Date()) {
-      throw new BadRequestException('startDate must be in the future');
+    this.validateDates(dto.startAt, dto.endAt);
+    if (dto.startAt <= new Date()) {
+      throw new BadRequestException('startAt must be in the future');
     }
     const event = this.repo.create({
       ...dto,
       ticketsIssued: 0,
       status: EventStatus.DRAFT,
-      createdBy: user.userId,
+      organizerId: user.userId,
     });
     return this.toResponse(await this.repo.save(event));
   }
@@ -42,7 +42,7 @@ export class EventsService {
     const qb = this.repo
       .createQueryBuilder('e')
       .where('e.status = :status', { status: EventStatus.PUBLISHED })
-      .andWhere('e.endDate > NOW()');
+      .andWhere('e.endAt > NOW()');
     return this.paginate(qb, q);
   }
 
@@ -50,7 +50,7 @@ export class EventsService {
   async findMine(q: QueryMyEventsDto, user: AuthUser) {
     const qb = this.repo
       .createQueryBuilder('e')
-      .where('e.createdBy = :uid', { uid: user.userId });
+      .where('e.organizerId = :uid', { uid: user.userId });
     if (q.status) qb.andWhere('e.status = :st', { st: q.status });
     return this.paginate(qb, q);
   }
@@ -77,15 +77,15 @@ export class EventsService {
       const changes = Object.fromEntries(
         Object.entries(dto).filter(([, v]) => v !== undefined),
       );
-      const startDate = dto.startDate ?? event.startDate;
-      const endDate = dto.endDate ?? event.endDate;
+      const startAt = dto.startAt ?? event.startAt;
+      const endAt = dto.endAt ?? event.endAt;
 
-      this.validateDates(startDate, endDate);
-      if (dto.startDate && dto.startDate <= new Date()) {
-        throw new BadRequestException('startDate must be in the future');
+      this.validateDates(startAt, endAt);
+      if (dto.startAt && dto.startAt <= new Date()) {
+        throw new BadRequestException('startAt must be in the future');
       }
-      if (endDate <= new Date()) {
-        throw new BadRequestException('endDate must be in the future');
+      if (endAt <= new Date()) {
+        throw new BadRequestException('endAt must be in the future');
       }
       // FR-CAP-06: can never drop capacity below what is already issued
       if (dto.capacity !== undefined && dto.capacity < event.ticketsIssued) {
@@ -109,7 +109,7 @@ export class EventsService {
           `Only DRAFT events can be published (current status: ${event.status})`,
         );
       }
-      if (event.endDate <= new Date()) {
+      if (event.endAt <= new Date()) {
         throw new BadRequestException('Cannot publish an event that has already ended');
       }
       event.status = EventStatus.PUBLISHED;
@@ -143,12 +143,12 @@ export class EventsService {
     if (q.location) {
       qb.andWhere('(e.location ILIKE :loc OR e.venue ILIKE :loc)', { loc: `%${q.location}%` });
     }
-    if (q.from) qb.andWhere('e.startDate >= :from', { from: q.from });
-    if (q.to) qb.andWhere('e.startDate <= :to', { to: q.to });
+    if (q.from) qb.andWhere('e.startAt >= :from', { from: q.from });
+    if (q.to) qb.andWhere('e.startAt <= :to', { to: q.to });
     if (q.availableOnly) qb.andWhere('e.ticketsIssued < e.capacity');
 
     const [items, total] = await qb
-      .orderBy('e.startDate', 'ASC')
+      .orderBy('e.startAt', 'ASC')
       .skip((q.page - 1) * q.limit)
       .take(q.limit)
       .getManyAndCount();
@@ -166,7 +166,7 @@ export class EventsService {
   }
 
   private canManage(event: Event, user: AuthUser) {
-    return user.role === UserRole.ADMIN || event.createdBy === user.userId;
+    return user.role === UserRole.ADMIN || event.organizerId === user.userId;
   }
 
   // FR-EVENT-09 — ownership check (role check is done by RolesGuard on the route)
@@ -177,7 +177,7 @@ export class EventsService {
   }
 
   private validateDates(start: Date, end: Date) {
-    if (end <= start) throw new BadRequestException('endDate must be after startDate');
+    if (end <= start) throw new BadRequestException('endAt must be after startAt');
   }
 
   // FR-CAP-03 — every event response carries remaining availability

@@ -6,7 +6,7 @@ const Trim = () =>
 
 // FR-EVENT-02: title, description, venue/location, dates and capacity are required
 export class CreateEventDto {
-  @Trim() @IsString() @IsNotEmpty() @MaxLength(150)
+  @Trim() @IsString() @IsNotEmpty() @MaxLength(200)
   title: string;
 
   @Trim() @IsString() @IsNotEmpty() @MaxLength(5000)
@@ -19,10 +19,10 @@ export class CreateEventDto {
   location: string;
 
   @Type(() => Date) @IsDate()
-  startDate: Date;
+  startAt: Date;
 
   @Type(() => Date) @IsDate()
-  endDate: Date;
+  endAt: Date;
 
   @Type(() => Number) @IsInt() @Min(1) @Max(1_000_000)
   capacity: number;

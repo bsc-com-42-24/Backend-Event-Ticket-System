@@ -1,26 +1,27 @@
 import {
-  Check,
   Column,
   CreateDateColumn,
   Entity,
-  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { EventStatus } from '../enums/event-status.enum';
 
+/** Maps the `events` table of event_ticket_booking_schema.sql (+ capacity columns). */
 @Entity('events')
-@Check('CHK_events_capacity_positive', '"capacity" > 0')
-@Check('CHK_events_dates', '"end_date" > "start_date"')
-// FR-CAP-06: the database itself refuses negative availability / overselling
-@Check('CHK_events_tickets_within_capacity', '"tickets_issued" >= 0 AND "tickets_issued" <= "capacity"')
-@Index('IDX_events_status_start', ['status', 'startDate'])
-@Index('IDX_events_created_by', ['createdBy'])
 export class Event {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('identity', {
+    name: 'event_id',
+    type: 'bigint',
+    generatedIdentity: 'ALWAYS',
+  })
   id: string;
 
-  @Column({ type: 'varchar', length: 150 })
+  /** Owner (Event Manager / organizer) user id */
+  @Column({ name: 'organizer_id', type: 'bigint' })
+  organizerId: string;
+
+  @Column({ type: 'varchar', length: 200 })
   title: string;
 
   @Column({ type: 'text' })
@@ -32,11 +33,11 @@ export class Event {
   @Column({ type: 'varchar', length: 255 })
   location: string;
 
-  @Column({ name: 'start_date', type: 'timestamptz' })
-  startDate: Date;
+  @Column({ name: 'start_at', type: 'timestamptz' })
+  startAt: Date;
 
-  @Column({ name: 'end_date', type: 'timestamptz' })
-  endDate: Date;
+  @Column({ name: 'end_at', type: 'timestamptz' })
+  endAt: Date;
 
   /** FR-CAP-01: maximum ticket capacity */
   @Column({ type: 'int' })
@@ -46,16 +47,8 @@ export class Event {
   @Column({ name: 'tickets_issued', type: 'int', default: 0 })
   ticketsIssued: number;
 
-  @Column({ type: 'enum', enum: EventStatus, default: EventStatus.DRAFT })
+  @Column({ type: 'varchar', length: 20, default: EventStatus.DRAFT })
   status: EventStatus;
-
-  /**
-   * Owner (Event Manager) user id. Plain column on purpose so Member 3's work
-   * doesn't depend on Member 2's User entity. After merge you may add:
-   * @ManyToOne(() => User) @JoinColumn({ name: 'created_by' }) creator: User;
-   */
-  @Column({ name: 'created_by', type: 'uuid' })
-  createdBy: string;
 
   @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
   publishedAt: Date | null;

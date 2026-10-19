@@ -1,17 +1,18 @@
 import {
   applyDecorators, Body, Controller, Delete, Get, HttpCode, Param,
-  ParseUUIDPipe, Patch, Post, Query, UseGuards,
+  Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';           // Member 2
 import { RolesGuard } from '../auth/guards/roles.guard';                // Member 2
 import { Roles } from '../auth/decorators/roles.decorator';            // Member 2
 import { CurrentUser } from '../auth/decorators/current-user.decorator'; // Member 2
-import { UserRole } from '../users/user-role.enum';                        // Member 2
+import { UserRole } from '../users/user-role.enum';                      // Member 2
 import { CreateEventDto } from './dto/create-event.dto';
 import { QueryEventsDto, QueryMyEventsDto } from './dto/query-events.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { EventsService } from './events.service';
+import { NumericIdPipe } from './pipes/numeric-id.pipe';
 import { OptionalJwtAuthGuard } from './guards/optional-jwt-auth.guard';
 import type { AuthUser } from './types/auth-user.type';
 
@@ -52,7 +53,7 @@ export class EventsController {
   @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'View event details incl. remaining tickets' })
-  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: AuthUser) {
+  findOne(@Param('id', NumericIdPipe) id: string, @CurrentUser() user?: AuthUser) {
     return this.events.findOne(id, user);
   }
 
@@ -60,7 +61,7 @@ export class EventsController {
   @ManagerOnly()
   @ApiOperation({ summary: 'Update an event (owner/admin)' })
   update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', NumericIdPipe) id: string,
     @Body() dto: UpdateEventDto,
     @CurrentUser() user: AuthUser,
   ) {
@@ -71,7 +72,7 @@ export class EventsController {
   @HttpCode(200)
   @ManagerOnly()
   @ApiOperation({ summary: 'Publish a DRAFT event' })
-  publish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+  publish(@Param('id', NumericIdPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.events.publish(id, user);
   }
 
@@ -79,7 +80,7 @@ export class EventsController {
   @HttpCode(200)
   @ManagerOnly()
   @ApiOperation({ summary: 'Cancel an event (status -> CANCELLED)' })
-  cancel(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
+  cancel(@Param('id', NumericIdPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.events.cancel(id, user);
   }
 }

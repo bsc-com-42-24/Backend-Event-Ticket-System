@@ -1,5 +1,6 @@
-import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { NumericIdPipe } from '../events/pipes/numeric-id.pipe';
 import { CapacityService } from './capacity.service';
 
 @ApiTags('Capacity')
@@ -9,7 +10,7 @@ export class CapacityController {
 
   @Get(':id/availability')
   @ApiOperation({ summary: 'Capacity, tickets issued and remaining availability (public)' })
-  availability(@Param('id', ParseUUIDPipe) id: string) {
+  availability(@Param('id', NumericIdPipe) id: string) {
     return this.capacity.getAvailability(id);
   }
 }
