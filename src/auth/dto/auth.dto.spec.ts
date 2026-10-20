@@ -3,6 +3,8 @@ import { validate } from 'class-validator';
 import { LoginDto } from './login.dto';
 import { RegisterDto } from './register.dto';
 
+const strict = { whitelist: true, forbidNonWhitelisted: true };
+
 describe('Authentication DTO validation', () => {
   it('accepts valid registration input and trims name and email', async () => {
     const input = plainToInstance(RegisterDto, {
@@ -11,14 +13,12 @@ describe('Authentication DTO validation', () => {
       password: 'correct horse battery',
     });
 
-    await expect(
-      validate(input, { whitelist: true, forbidNonWhitelisted: true }),
-    ).resolves.toHaveLength(0);
+    await expect(validate(input, strict)).resolves.toHaveLength(0);
     expect(input.name).toBe('Customer');
     expect(input.email).toBe('CUSTOMER@example.com');
   });
 
-  it('rejects client-supplied roles during registration', async () => {
+  it('rejects ADMIN as a registration role', async () => {
     const input = plainToInstance(RegisterDto, {
       name: 'Customer',
       email: 'customer@example.com',
@@ -26,19 +26,44 @@ describe('Authentication DTO validation', () => {
       role: 'ADMIN',
     });
 
-    const errors = await validate(input, {
-      whitelist: true,
-      forbidNonWhitelisted: true,
-    });
+    const errors = await validate(input, strict);
 
     expect(errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           property: 'role',
-          constraints: { whitelistValidation: 'property role should not exist' },
+          constraints: expect.objectContaining({
+            isIn: 'role must be ATTENDEE or ORGANIZER',
+          }),
         }),
       ]),
     );
+  });
+
+  it('rejects CHECK_IN_STAFF as a registration role', async () => {
+    const input = plainToInstance(RegisterDto, {
+      name: 'Customer',
+      email: 'customer@example.com',
+      password: 'correct horse battery',
+      role: 'CHECK_IN_STAFF',
+    });
+
+    const errors = await validate(input, strict);
+
+    expect(errors.map(({ property }) => property)).toContain('role');
+  });
+
+  it('accepts ATTENDEE, ORGANIZER or no role', async () => {
+    for (const role of ['ATTENDEE', 'ORGANIZER', undefined]) {
+      const input = plainToInstance(RegisterDto, {
+        name: 'Customer',
+        email: 'customer@example.com',
+        password: 'correct horse battery',
+        role,
+      });
+
+      await expect(validate(input, strict)).resolves.toHaveLength(0);
+    }
   });
 
   it('rejects invalid registration fields', async () => {
