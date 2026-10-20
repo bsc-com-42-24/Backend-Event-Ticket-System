@@ -12,6 +12,7 @@ import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { AuthResponse, JwtPayload } from './auth.types';
+import { UserRole } from '../users/user-role.enum';
 
 const BCRYPT_SALT_ROUNDS = 12;
 const BCRYPT_MAX_PASSWORD_BYTES = 72;
@@ -35,6 +36,7 @@ export class AuthService {
         name: input.name.trim(),
         email: input.email.trim().toLowerCase(),
         passwordHash,
+        role: input.role ?? UserRole.CUSTOMER,
       });
 
       return this.createAuthResponse(user);
