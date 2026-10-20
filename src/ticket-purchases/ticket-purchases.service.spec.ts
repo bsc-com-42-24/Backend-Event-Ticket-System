@@ -10,6 +10,7 @@ describe('TicketPurchasesService', () => {
 
   const ticketRow = {
     ticket_type_id: 1,
+    event_id: 1,
     price: '100.00',
     currency: 'MWK',
     per_order_limit: 10,
@@ -64,6 +65,7 @@ describe('TicketPurchasesService', () => {
     client.query
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({ rows: [ticketRow] }) // SELECT
+      .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE event
       .mockResolvedValueOnce({}) // UPDATE reserved
       .mockResolvedValueOnce({
         rows: [

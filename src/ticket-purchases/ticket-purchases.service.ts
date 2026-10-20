@@ -24,7 +24,7 @@ export class TicketPurchasesService {
       transactionStarted = true;
 
       const ticketResult = await client.query(
-        `SELECT ticket_type_id, price, currency, per_order_limit, is_active,
+        `SELECT ticket_type_id, event_id, price, currency, per_order_limit, is_active,
                 sales_start_at, sales_end_at,
                 (quantity_total - quantity_sold - quantity_reserved) AS available
          FROM ticket_types
@@ -58,6 +58,22 @@ export class TicketPurchasesService {
       }
       if (available < quantity) {
         throw new BadRequestException(`Only ${available} tickets are available.`);
+      }
+
+      const eventUpdate = await client.query(
+        `UPDATE events
+         SET tickets_issued = tickets_issued + $1
+         WHERE event_id = $2
+           AND status = 'PUBLISHED'
+           AND end_at > NOW()
+           AND tickets_issued + $1 <= capacity
+         RETURNING event_id`,
+        [quantity, ticket.event_id],
+      );
+      if (eventUpdate.rowCount === 0) {
+        throw new BadRequestException(
+          'The event is not on sale, has ended, or is sold out.',
+        );
       }
 
       const subtotal = Math.round(price * quantity * 100) / 100;

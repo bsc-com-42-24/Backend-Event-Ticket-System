@@ -1,14 +1,15 @@
 import { Module } from '@nestjs/common';
-import { CapacityModule } from './capacity/capacity.module';
-import { EventsModule } from './events/events.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { CapacityModule } from './capacity/capacity.module';
 import { environmentValidationSchema } from './config/environment.validation';
-import { UsersModule } from './users/users.module';
+import { EventsModule } from './events/events.module';
 import { TicketPurchasesModule } from './ticket-purchases/ticket-purchases.module';
+import { TicketsModule } from './tickets/tickets.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -33,9 +34,10 @@ import { TicketPurchasesModule } from './ticket-purchases/ticket-purchases.modul
     }),
     UsersModule,
     AuthModule,
-    TicketPurchasesModule,
     EventsModule,
     CapacityModule,
+    TicketPurchasesModule,
+    TicketsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
