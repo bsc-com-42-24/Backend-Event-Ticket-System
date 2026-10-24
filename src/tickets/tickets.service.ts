@@ -17,16 +17,44 @@ import { QrCodeService } from './qr-code/qr-code.service';
 
 interface TicketForValidation {
   ticket_id: string;
+  ticket_number: string;
   event_id: string;
   ticket_status: string;
+  checked_in_at: Date | null;
   event_status: string;
   organizer_id: string;
+  event_title: string;
+  event_venue: string | null;
+  event_location: string | null;
+  event_start_at: Date;
+  event_end_at: Date;
+  ticket_type_name: string;
+  owner_name: string;
 }
 
 interface UpdatedTicket {
   ticket_id: string;
   event_id: string;
   checked_in_at: Date;
+}
+
+interface TicketValidationTicket {
+  id: string;
+  ticketNumber: string;
+  status: string;
+  checkedInAt: Date | null;
+  ticketType: string;
+  ownerName: string;
+}
+
+interface TicketValidationEvent {
+  id: string;
+  title: string;
+  venue: string | null;
+  location: string | null;
+  startAt: Date;
+  endAt: Date;
+  status: string;
 }
 
 export type TicketValidationResult =
@@ -37,6 +65,8 @@ export type TicketValidationResult =
       ticketId: string;
       eventId: string;
       validatedAt: Date;
+      ticket: TicketValidationTicket;
+      event: TicketValidationEvent;
     }
   | {
       accepted: false;
@@ -45,6 +75,8 @@ export type TicketValidationResult =
       ticketId: string | null;
       eventId: string | null;
       validatedAt: null;
+      ticket: TicketValidationTicket | null;
+      event: TicketValidationEvent | null;
     };
 
 @Injectable()
@@ -87,6 +119,32 @@ export class TicketsService {
     return { ticket, qrCode };
   }
 
+  async validateTicketImage(
+    image: Buffer,
+    validatorId: string,
+    attemptedEventId?: string,
+    validatorRole?: UserRole,
+  ): Promise<TicketValidationResult> {
+    const qrToken = await this.qrCodeService.decodeQrCode(image);
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        qrToken,
+      )
+    ) {
+      throw new BadRequestException(
+        'The QR code does not contain a valid ticket token.',
+      );
+    }
+
+    return this.validateTicket(
+      qrToken,
+      validatorId,
+      attemptedEventId,
+      undefined,
+      validatorRole,
+    );
+  }
+
   async validateTicket(
     qrToken: string | undefined,
     validatorId: string,
@@ -109,10 +167,17 @@ export class TicketsService {
     const lookupColumn = qrToken ? 't.qr_token' : 't.ticket_number';
     const result = await this.dataSource.transaction(async (manager) => {
       const tickets: TicketForValidation[] = await manager.query(
-        `SELECT t.ticket_id, t.event_id, t.status AS ticket_status,
-                e.status AS event_status, e.organizer_id
+        `SELECT t.ticket_id, t.ticket_number, t.event_id,
+                t.status AS ticket_status, t.checked_in_at,
+                e.status AS event_status, e.organizer_id,
+                e.title AS event_title, e.venue AS event_venue,
+                e.location AS event_location, e.start_at AS event_start_at,
+                e.end_at AS event_end_at, tt.type_name AS ticket_type_name,
+                u.full_name AS owner_name
          FROM tickets t
          JOIN events e ON e.event_id = t.event_id
+         JOIN ticket_types tt ON tt.ticket_type_id = t.ticket_type_id
+         JOIN users u ON u.user_id = t.owner_id
          WHERE ${lookupColumn} = $1
          FOR UPDATE OF t, e`,
         [lookupValue],
@@ -129,35 +194,19 @@ export class TicketsService {
         throw new NotFoundException('Ticket not found');
       }
       if (ticket.ticket_status === 'USED') {
-        return this.rejected(
-          TicketValidationReason.ALREADY_USED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
+        return this.rejected(TicketValidationReason.ALREADY_USED, ticket);
       }
       if (
         ticket.ticket_status === 'CANCELLED' ||
         ticket.ticket_status === 'REFUNDED'
       ) {
-        return this.rejected(
-          TicketValidationReason.CANCELLED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
+        return this.rejected(TicketValidationReason.CANCELLED, ticket);
       }
       if (ticket.event_status === 'CANCELLED') {
-        return this.rejected(
-          TicketValidationReason.EVENT_CANCELLED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
+        return this.rejected(TicketValidationReason.EVENT_CANCELLED, ticket);
       }
       if (attemptedEventId && attemptedEventId !== ticket.event_id) {
-        return this.rejected(
-          TicketValidationReason.WRONG_EVENT,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
+        return this.rejected(TicketValidationReason.WRONG_EVENT, ticket);
       }
 
       const updatedTickets: UpdatedTicket[] = await manager.query(
@@ -169,11 +218,10 @@ export class TicketsService {
       );
       const updated = updatedTickets[0];
       if (!updated) {
-        return this.rejected(
-          TicketValidationReason.ALREADY_USED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
+        return this.rejected(TicketValidationReason.ALREADY_USED, {
+          ...ticket,
+          ticket_status: 'USED',
+        });
       }
 
       return {
@@ -183,6 +231,8 @@ export class TicketsService {
         ticketId: updated.ticket_id,
         eventId: updated.event_id,
         validatedAt: updated.checked_in_at,
+        ticket: this.toValidationTicket(ticket, 'USED', updated.checked_in_at),
+        event: this.toValidationEvent(ticket),
       };
     });
 
@@ -236,8 +286,7 @@ export class TicketsService {
 
   private rejected(
     reason: TicketValidationReason,
-    ticketId: string | null = null,
-    eventId: string | null = null,
+    ticket?: TicketForValidation,
   ): TicketValidationResult {
     const messages: Record<TicketValidationReason, string> = {
       [TicketValidationReason.NOT_FOUND]: 'Ticket not found.',
@@ -254,9 +303,40 @@ export class TicketsService {
       accepted: false,
       reason,
       message: messages[reason],
-      ticketId,
-      eventId,
+      ticketId: ticket?.ticket_id ?? null,
+      eventId: ticket?.event_id ?? null,
       validatedAt: null,
+      ticket: ticket ? this.toValidationTicket(ticket) : null,
+      event: ticket ? this.toValidationEvent(ticket) : null,
+    };
+  }
+
+  private toValidationTicket(
+    ticket: TicketForValidation,
+    status = ticket.ticket_status,
+    checkedInAt = ticket.checked_in_at,
+  ): TicketValidationTicket {
+    return {
+      id: ticket.ticket_id,
+      ticketNumber: ticket.ticket_number,
+      status,
+      checkedInAt,
+      ticketType: ticket.ticket_type_name,
+      ownerName: ticket.owner_name,
+    };
+  }
+
+  private toValidationEvent(
+    ticket: TicketForValidation,
+  ): TicketValidationEvent {
+    return {
+      id: ticket.event_id,
+      title: ticket.event_title,
+      venue: ticket.event_venue,
+      location: ticket.event_location,
+      startAt: ticket.event_start_at,
+      endAt: ticket.event_end_at,
+      status: ticket.event_status,
     };
   }
 

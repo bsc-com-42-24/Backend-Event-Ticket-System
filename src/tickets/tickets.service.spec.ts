@@ -13,9 +13,19 @@ import { TicketsService } from './tickets.service';
 
 const validationTicket = {
   ticket_id: '5',
+  ticket_number: 'TKT-7F3A92C14B',
   event_id: '7',
   ticket_status: 'ISSUED',
+  checked_in_at: null,
   event_status: 'PUBLISHED',
+  event_title: 'Launch Party',
+  event_venue: 'Main Hall',
+  event_location: 'Blantyre',
+  event_start_at: new Date('2026-01-01T18:00:00.000Z'),
+  event_end_at: new Date('2026-01-01T22:00:00.000Z'),
+  ticket_type_name: 'General Admission',
+  owner_name: 'Jane Doe',
+  organizer_id: '22',
 };
 
 describe('TicketsService', () => {
@@ -23,6 +33,9 @@ describe('TicketsService', () => {
   const repo = { findOne: jest.fn(), find: jest.fn() };
   const qr = {
     generateQrCode: jest.fn().mockResolvedValue('data:image/png;base64,x'),
+    decodeQrCode: jest.fn().mockResolvedValue(
+      '7a3d3bb5-cf46-4c52-8acf-389ccadf440a',
+    ),
   };
   const manager = { query: jest.fn() };
   const dataSource = {
@@ -48,6 +61,39 @@ describe('TicketsService', () => {
     );
     manager.query.mockReset();
     dataSource.query.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('decodes an uploaded QR image and validates its ticket token', async () => {
+    manager.query
+      .mockResolvedValueOnce([validationTicket])
+      .mockResolvedValueOnce([
+        {
+          ticket_id: '5',
+          event_id: '7',
+          checked_in_at: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      ]);
+
+    await service.validateTicketImage(
+      Buffer.from('image bytes'),
+      '19',
+      '7',
+      UserRole.VALIDATOR,
+    );
+
+    expect(qr.decodeQrCode).toHaveBeenCalledWith(Buffer.from('image bytes'));
+    expect(manager.query.mock.calls[0][1]).toEqual([
+      '7a3d3bb5-cf46-4c52-8acf-389ccadf440a',
+    ]);
+  });
+
+  it('rejects QR images that do not contain a ticket UUID', async () => {
+    qr.decodeQrCode.mockResolvedValueOnce('not-a-ticket-token');
+
+    await expect(
+      service.validateTicketImage(Buffer.from('image bytes'), '19'),
+    ).rejects.toThrow('The QR code does not contain a valid ticket token.');
+    expect(manager.query).not.toHaveBeenCalled();
   });
 
   it('hides a ticket from someone who does not own it', async () => {
@@ -177,6 +223,23 @@ describe('TicketsService', () => {
       ticketId: '5',
       eventId: '7',
       validatedAt: checkedInAt,
+      ticket: {
+        id: '5',
+        ticketNumber: 'TKT-7F3A92C14B',
+        status: 'USED',
+        checkedInAt,
+        ticketType: 'General Admission',
+        ownerName: 'Jane Doe',
+      },
+      event: {
+        id: '7',
+        title: 'Launch Party',
+        venue: 'Main Hall',
+        location: 'Blantyre',
+        startAt: new Date('2026-01-01T18:00:00.000Z'),
+        endAt: new Date('2026-01-01T22:00:00.000Z'),
+        status: 'PUBLISHED',
+      },
     });
     expect(manager.query.mock.calls[1][0]).toContain(
       "WHERE ticket_id = $1 AND status = 'ISSUED'",

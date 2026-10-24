@@ -40,6 +40,60 @@ export class ValidateTicketDto {
   eventId?: string;
 }
 
+export class ValidateTicketImageDto {
+  @ApiPropertyOptional({
+    description: 'Optional event ID to ensure the ticket belongs to this event.',
+    example: '42',
+  })
+  @IsOptional()
+  @IsNumberString()
+  @MaxLength(30)
+  eventId?: string;
+}
+
+export class ValidatedTicketDetailsDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  ticketNumber: string;
+
+  @ApiProperty()
+  status: string;
+
+  @ApiProperty({ type: Date, nullable: true })
+  checkedInAt: Date | null;
+
+  @ApiProperty()
+  ticketType: string;
+
+  @ApiProperty()
+  ownerName: string;
+}
+
+export class ValidatedEventDetailsDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiProperty({ nullable: true })
+  venue: string | null;
+
+  @ApiProperty({ nullable: true })
+  location: string | null;
+
+  @ApiProperty({ type: Date })
+  startAt: Date;
+
+  @ApiProperty({ type: Date })
+  endAt: Date;
+
+  @ApiProperty()
+  status: string;
+}
+
 export class TicketValidationResponseDto {
   @ApiProperty({ description: 'Whether the ticket was accepted for entry.' })
   accepted: boolean;
@@ -65,4 +119,10 @@ export class TicketValidationResponseDto {
 
   @ApiProperty({ type: Date, nullable: true })
   validatedAt: Date | null;
+
+  @ApiProperty({ type: () => ValidatedTicketDetailsDto, nullable: true })
+  ticket: ValidatedTicketDetailsDto | null;
+
+  @ApiProperty({ type: () => ValidatedEventDetailsDto, nullable: true })
+  event: ValidatedEventDetailsDto | null;
 }

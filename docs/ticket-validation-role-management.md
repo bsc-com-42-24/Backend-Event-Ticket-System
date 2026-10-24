@@ -2,9 +2,10 @@
 
 ## Ticket validation
 
-`POST /tickets/validate` requires a bearer token and the `CHECK_IN_STAFF` or
-`ADMIN` role. The body contains the UUID encoded in the ticket QR code and may
-include the ID of the event currently being checked in:
+`POST /tickets/validate` requires a bearer token and the `CHECK_IN_STAFF`,
+`ORGANIZER` (for their own events), or `ADMIN` role. The body contains the UUID
+encoded in the ticket QR code and may include the ID of the event currently
+being checked in:
 
 ```json
 {
@@ -30,6 +31,11 @@ which ensures that concurrent scanners cannot both accept the same ticket.
 Every decision is written to `ticket_validations`. Audit insertion is isolated
 from the validation transaction; if an audit write fails, the validation
 result is retained and the failure is logged by the API.
+
+Check-in staff can also upload a QR image to `POST /tickets/validate/image`.
+See [ticket-validation-endpoints.md](./ticket-validation-endpoints.md) for the
+multipart upload format, supported image formats, response details, and the
+other check-in endpoints.
 
 ## Role management
 

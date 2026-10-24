@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -9,6 +10,7 @@ describe('TicketsController', () => {
   const service = {
     findMine: jest.fn().mockResolvedValue([]),
     validateTicket: jest.fn(),
+    validateTicketImage: jest.fn(),
     getCheckInSummary: jest.fn(),
   };
 
@@ -42,5 +44,29 @@ describe('TicketsController', () => {
       'TKT-7F3A92C14B',
       'ORGANIZER',
     );
+  });
+
+  it('passes the uploaded image, event, and validator to validation', () => {
+    const user = { userId: '19', role: 'CHECK_IN_STAFF' } as any;
+    const file = { buffer: Buffer.from('image bytes') };
+    const input = { eventId: '7' };
+
+    controller.validateTicketImage(file, input, user);
+
+    expect(service.validateTicketImage).toHaveBeenCalledWith(
+      file.buffer,
+      '19',
+      '7',
+      'CHECK_IN_STAFF',
+    );
+  });
+
+  it('rejects image validation when no file was uploaded', () => {
+    expect(() =>
+      controller.validateTicketImage(undefined, {}, {
+        userId: '19',
+        role: 'CHECK_IN_STAFF',
+      } as any),
+    ).toThrow(BadRequestException);
   });
 });

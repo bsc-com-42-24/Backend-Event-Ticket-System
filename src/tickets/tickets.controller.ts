@@ -1,16 +1,22 @@
 import {
+  BadRequestException,
   Controller,
+  Body,
   Get,
   HttpCode,
   Param,
   ParseIntPipe,
   Post,
-  Body,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
@@ -27,6 +33,7 @@ import { UserRole } from '../users/user-role.enum';
 import {
   TicketValidationResponseDto,
   ValidateTicketDto,
+  ValidateTicketImageDto,
 } from './dto/validate-ticket.dto';
 import { TicketsService } from './tickets.service';
 
@@ -86,6 +93,60 @@ export class TicketsController {
       user.userId,
       input.eventId,
       input.ticketNumber,
+      user.role,
+    );
+  }
+
+  @Post('validate/image')
+  @HttpCode(200)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.VALIDATOR, UserRole.EVENT_MANAGER, UserRole.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        eventId: { type: 'string', example: '42' },
+      },
+    },
+  })
+  @ApiOperation({
+    summary: 'Scan and check in a ticket by uploading its QR image',
+  })
+  @ApiOkResponse({
+    description:
+      'Returns the validation decision with ticket and event details when the QR token identifies a ticket.',
+    type: TicketValidationResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'The image is missing, unreadable, contains no QR code, or has no valid ticket token.',
+  })
+  @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
+  @ApiForbiddenResponse({
+    description:
+      'Only check-in staff, event managers, and administrators may validate tickets.',
+  })
+  validateTicketImage(
+    @UploadedFile() file: { buffer: Buffer } | undefined,
+    @Body() input: ValidateTicketImageDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Upload a QR image using the "file" field.');
+    }
+
+    return this.ticketsService.validateTicketImage(
+      file.buffer,
+      user.userId,
+      input.eventId,
       user.role,
     );
   }
