@@ -22,6 +22,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { NumericIdPipe } from '../events/pipes/numeric-id.pipe';
 import { UserRole } from '../users/user-role.enum';
 import {
   TicketValidationResponseDto,
@@ -57,19 +58,24 @@ export class TicketsController {
   @Post('validate')
   @HttpCode(200)
   @UseGuards(RolesGuard)
-  @Roles(UserRole.VALIDATOR, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Validate a ticket QR token for event entry' })
+  @Roles(UserRole.VALIDATOR, UserRole.EVENT_MANAGER, UserRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Check in a guest using a QR token or manually entered ticket number',
+  })
   @ApiOkResponse({
     description:
       'Returns accepted=true or accepted=false with a specific rejection reason.',
     type: TicketValidationResponseDto,
   })
   @ApiBadRequestResponse({
-    description: 'The QR token or event ID is invalid.',
+    description:
+      'Provide exactly one valid QR token or ticket number, and an optional valid event ID.',
   })
   @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
   @ApiForbiddenResponse({
-    description: 'Only check-in staff and administrators may validate tickets.',
+    description:
+      'Only check-in staff, event managers, and administrators may validate tickets.',
   })
   validateTicket(
     @Body() input: ValidateTicketDto,
@@ -79,7 +85,22 @@ export class TicketsController {
       input.qrToken,
       user.userId,
       input.eventId,
+      input.ticketNumber,
+      user.role,
     );
+  }
+
+  @Get('events/:eventId/check-in-summary')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.EVENT_MANAGER, UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Get check-in progress for an event you manage',
+  })
+  getCheckInSummary(
+    @Param('eventId', NumericIdPipe) eventId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ticketsService.getCheckInSummary(eventId, user);
   }
 
   @Get(':ticketNumber')

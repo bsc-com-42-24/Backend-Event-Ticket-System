@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Ticket } from './entities/ticket.entity';
 import { TicketValidationReason } from './enums/ticket-validation-reason.enum';
+import { UserRole } from '../users/user-role.enum';
 jest.mock('./qr-code/qr-code.service', () => ({
   QrCodeService: class QrCodeService {},
 }));
@@ -96,6 +97,19 @@ describe('TicketsService', () => {
       reason,
       validatedAt: null,
     });
+    expect(result.message).toBe(
+      {
+        [TicketValidationReason.NOT_FOUND]: 'Ticket not found.',
+        [TicketValidationReason.ALREADY_USED]:
+          'This ticket has already been used.',
+        [TicketValidationReason.CANCELLED]:
+          'This ticket is cancelled or refunded.',
+        [TicketValidationReason.WRONG_EVENT]:
+          'This ticket is for a different event.',
+        [TicketValidationReason.EVENT_CANCELLED]:
+          'This event has been cancelled.',
+      }[reason],
+    );
     expect(dataSource.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO ticket_validations'),
       [
@@ -112,6 +126,40 @@ describe('TicketsService', () => {
     );
   });
 
+  it('accepts a manually entered ticket number', async () => {
+    const checkedInAt = new Date('2026-01-01T00:00:00.000Z');
+    manager.query
+      .mockResolvedValueOnce([validationTicket])
+      .mockResolvedValueOnce([
+        { ticket_id: '5', event_id: '7', checked_in_at: checkedInAt },
+      ]);
+
+    const result = await service.validateTicket(
+      undefined,
+      '19',
+      '7',
+      'TKT-7F3A92C14B',
+    );
+
+    expect(manager.query.mock.calls[0][0]).toContain(
+      'WHERE t.ticket_number = $1',
+    );
+    expect(manager.query.mock.calls[0][1]).toEqual(['TKT-7F3A92C14B']);
+    expect(result).toMatchObject({
+      accepted: true,
+      message: 'Ticket accepted. Admit guest.',
+    });
+  });
+
+  it('requires exactly one ticket lookup method', async () => {
+    await expect(service.validateTicket(undefined, '19')).rejects.toThrow(
+      'Provide exactly one of qrToken or ticketNumber',
+    );
+    await expect(
+      service.validateTicket('qr-token', '19', undefined, 'TKT-123'),
+    ).rejects.toThrow('Provide exactly one of qrToken or ticketNumber');
+  });
+
   it('accepts an unused ticket with one conditional update and records the attempt', async () => {
     const checkedInAt = new Date('2026-01-01T00:00:00.000Z');
     manager.query
@@ -125,6 +173,7 @@ describe('TicketsService', () => {
     expect(result).toEqual({
       accepted: true,
       reason: null,
+      message: 'Ticket accepted. Admit guest.',
       ticketId: '5',
       eventId: '7',
       validatedAt: checkedInAt,
@@ -174,6 +223,48 @@ describe('TicketsService', () => {
     expect(result).toMatchObject({
       accepted: false,
       reason: TicketValidationReason.ALREADY_USED,
+    });
+  });
+
+  it('does not allow a manager to validate tickets for another organizer', async () => {
+    manager.query.mockResolvedValueOnce([
+      { ...validationTicket, organizer_id: '22' },
+    ]);
+
+    await expect(
+      service.validateTicket(
+        'qr-token',
+        '19',
+        undefined,
+        undefined,
+        UserRole.EVENT_MANAGER,
+      ),
+    ).rejects.toThrow(NotFoundException);
+    expect(dataSource.query).not.toHaveBeenCalled();
+  });
+
+  it('returns event check-in progress to its manager', async () => {
+    dataSource.query.mockResolvedValueOnce([
+      {
+        event_id: '7',
+        title: 'Launch Party',
+        tickets_issued: 50,
+        checked_in: 18,
+      },
+    ]);
+
+    await expect(
+      service.getCheckInSummary('7', {
+        userId: '19',
+        email: 'manager@example.com',
+        role: UserRole.EVENT_MANAGER,
+      }),
+    ).resolves.toEqual({
+      eventId: '7',
+      eventTitle: 'Launch Party',
+      ticketsIssued: 50,
+      checkedIn: 18,
+      remaining: 32,
     });
   });
 

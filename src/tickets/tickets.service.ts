@@ -1,5 +1,7 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -18,6 +20,7 @@ interface TicketForValidation {
   event_id: string;
   ticket_status: string;
   event_status: string;
+  organizer_id: string;
 }
 
 interface UpdatedTicket {
@@ -30,6 +33,7 @@ export type TicketValidationResult =
   | {
       accepted: true;
       reason: null;
+      message: string;
       ticketId: string;
       eventId: string;
       validatedAt: Date;
@@ -37,6 +41,7 @@ export type TicketValidationResult =
   | {
       accepted: false;
       reason: TicketValidationReason;
+      message: string;
       ticketId: string | null;
       eventId: string | null;
       validatedAt: null;
@@ -83,23 +88,45 @@ export class TicketsService {
   }
 
   async validateTicket(
-    qrToken: string,
+    qrToken: string | undefined,
     validatorId: string,
     attemptedEventId?: string,
+    ticketNumber?: string,
+    validatorRole?: UserRole,
   ): Promise<TicketValidationResult> {
+    if (Boolean(qrToken) === Boolean(ticketNumber)) {
+      throw new BadRequestException(
+        'Provide exactly one of qrToken or ticketNumber',
+      );
+    }
+
+    const lookupValue = qrToken || ticketNumber;
+    if (!lookupValue) {
+      throw new BadRequestException(
+        'Provide exactly one of qrToken or ticketNumber',
+      );
+    }
+    const lookupColumn = qrToken ? 't.qr_token' : 't.ticket_number';
     const result = await this.dataSource.transaction(async (manager) => {
       const tickets: TicketForValidation[] = await manager.query(
-        `SELECT t.ticket_id, t.event_id, t.status AS ticket_status, e.status AS event_status
+        `SELECT t.ticket_id, t.event_id, t.status AS ticket_status,
+                e.status AS event_status, e.organizer_id
          FROM tickets t
          JOIN events e ON e.event_id = t.event_id
-         WHERE t.qr_token = $1
+         WHERE ${lookupColumn} = $1
          FOR UPDATE OF t, e`,
-        [qrToken],
+        [lookupValue],
       );
 
       const ticket = tickets[0];
       if (!ticket) {
         return this.rejected(TicketValidationReason.NOT_FOUND);
+      }
+      if (
+        validatorRole === UserRole.EVENT_MANAGER &&
+        ticket.organizer_id !== validatorId
+      ) {
+        throw new NotFoundException('Ticket not found');
       }
       if (ticket.ticket_status === 'USED') {
         return this.rejected(
@@ -152,6 +179,7 @@ export class TicketsService {
       return {
         accepted: true as const,
         reason: null,
+        message: 'Ticket accepted. Admit guest.',
         ticketId: updated.ticket_id,
         eventId: updated.event_id,
         validatedAt: updated.checked_in_at,
@@ -162,14 +190,70 @@ export class TicketsService {
     return result;
   }
 
+  async getCheckInSummary(
+    eventId: string,
+    user: AuthenticatedUser,
+  ): Promise<{
+    eventId: string;
+    eventTitle: string;
+    ticketsIssued: number;
+    checkedIn: number;
+    remaining: number;
+  }> {
+    if (
+      user.role !== UserRole.ADMIN &&
+      user.role !== UserRole.EVENT_MANAGER
+    ) {
+      throw new ForbiddenException(
+        'Only event managers and administrators can view check-in progress',
+      );
+    }
+
+    const rows = await this.dataSource.query(
+      `SELECT e.event_id, e.title,
+              COUNT(t.ticket_id)::int AS tickets_issued,
+              COUNT(t.ticket_id) FILTER (WHERE t.status = 'USED')::int AS checked_in
+       FROM events e
+       LEFT JOIN tickets t
+         ON t.event_id = e.event_id
+        AND t.status IN ('ISSUED', 'USED')
+       WHERE e.event_id = $1
+         AND ($2 = 'ADMIN' OR e.organizer_id = $3)
+       GROUP BY e.event_id, e.title`,
+      [eventId, user.role, user.userId],
+    );
+    const summary = rows[0];
+    if (!summary) throw new NotFoundException('Event not found');
+
+    return {
+      eventId: summary.event_id,
+      eventTitle: summary.title,
+      ticketsIssued: summary.tickets_issued,
+      checkedIn: summary.checked_in,
+      remaining: summary.tickets_issued - summary.checked_in,
+    };
+  }
+
   private rejected(
     reason: TicketValidationReason,
     ticketId: string | null = null,
     eventId: string | null = null,
   ): TicketValidationResult {
+    const messages: Record<TicketValidationReason, string> = {
+      [TicketValidationReason.NOT_FOUND]: 'Ticket not found.',
+      [TicketValidationReason.ALREADY_USED]:
+        'This ticket has already been used.',
+      [TicketValidationReason.CANCELLED]:
+        'This ticket is cancelled or refunded.',
+      [TicketValidationReason.WRONG_EVENT]:
+        'This ticket is for a different event.',
+      [TicketValidationReason.EVENT_CANCELLED]:
+        'This event has been cancelled.',
+    };
     return {
       accepted: false,
       reason,
+      message: messages[reason],
       ticketId,
       eventId,
       validatedAt: null,

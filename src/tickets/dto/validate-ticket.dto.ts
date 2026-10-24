@@ -1,15 +1,33 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumberString, IsOptional, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsNumberString,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { TicketValidationReason } from '../enums/ticket-validation-reason.enum';
 export { TicketValidationReason } from '../enums/ticket-validation-reason.enum';
 
 export class ValidateTicketDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'The secret UUID encoded in the ticket QR code.',
     format: 'uuid',
   })
+  @IsOptional()
   @IsUUID()
-  qrToken: string;
+  qrToken?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Ticket number for manual entry when the QR code cannot be scanned.',
+    example: 'TKT-7F3A92C14B',
+    maxLength: 50,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  ticketNumber?: string;
 
   @ApiPropertyOptional({
     description:
@@ -25,6 +43,12 @@ export class ValidateTicketDto {
 export class TicketValidationResponseDto {
   @ApiProperty({ description: 'Whether the ticket was accepted for entry.' })
   accepted: boolean;
+
+  @ApiProperty({
+    description: 'Short instruction suitable for showing to check-in staff.',
+    example: 'Ticket accepted. Admit guest.',
+  })
+  message: string;
 
   @ApiProperty({
     enum: TicketValidationReason,
