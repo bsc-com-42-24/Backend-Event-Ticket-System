@@ -1,16 +1,49 @@
+version: '3.8'
 services:
-  db:
-    image: postgres:16
-    container_name: ticket-db
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ticket_master
+  app:
+    build: .
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=${DB_USERNAME:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_NAME=${DB_NAME:-ticket_event_db}
+      - PORT=${PORT:-3000}
+      - ORDER_EXPIRY_MINUTES=${ORDER_EXPIRY_MINUTES:-15}
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
-      - ./event_ticket_booking_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - dbdata:/var/lib/postgresql/data
+      - ./src:/app/src
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-ticket_event_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
 
 volumes:
-  dbdata:
+  postgres_data:
