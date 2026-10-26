@@ -23,6 +23,22 @@ export class TicketPurchasesService {
       await client.query('BEGIN');
       transactionStarted = true;
 
+      const ticketTypeEvent = await client.query(
+        `SELECT event_id FROM ticket_types WHERE ticket_type_id = $1`,
+        [ticketTypeId],
+      );
+      if (ticketTypeEvent.rows.length === 0) {
+        throw new NotFoundException('Ticket type not found.');
+      }
+
+      const eventLock = await client.query(
+        `SELECT event_id FROM events WHERE event_id = $1 FOR UPDATE`,
+        [ticketTypeEvent.rows[0].event_id],
+      );
+      if (eventLock.rows.length === 0) {
+        throw new NotFoundException('Event not found.');
+      }
+
       const ticketResult = await client.query(
         `SELECT ticket_type_id, event_id, price, currency, per_order_limit, is_active,
                 sales_start_at, sales_end_at,
@@ -129,10 +145,7 @@ export class TicketPurchasesService {
         }
       }
 
-      if (
-        error instanceof BadRequestException ||
-        error instanceof NotFoundException
-      ) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
         throw error;
       }
 

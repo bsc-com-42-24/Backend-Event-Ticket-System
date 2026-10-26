@@ -93,6 +93,18 @@ export class EventsService {
           `Capacity cannot be lower than tickets already issued (${event.ticketsIssued})`,
         );
       }
+      if (dto.capacity !== undefined) {
+        const [allocation] = await m.query(
+          `SELECT COALESCE(SUM(quantity_total), 0) AS allocated
+           FROM ticket_types WHERE event_id = $1`,
+          [id],
+        );
+        if (dto.capacity < Number(allocation.allocated)) {
+          throw new ConflictException(
+            `Capacity cannot be lower than configured ticket type quantities (${allocation.allocated})`,
+          );
+        }
+      }
 
       Object.assign(event, changes);
       return this.toResponse(await m.save(event));

@@ -5,19 +5,31 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Event } from '../events/entities/event.entity';
 import { EventStatus } from '../events/enums/event-status.enum';
 
 @Injectable()
 export class CapacityService {
-  constructor(@InjectRepository(Event) private readonly repo: Repository<Event>) {}
+  constructor(
+    @InjectRepository(Event) private readonly repo: Repository<Event>,
+    private readonly dataSource: DataSource,
+  ) {}
 
   // FR-CAP-01/02/03
   async getAvailability(eventId: string) {
     const e = await this.repo.findOne({ where: { id: eventId } });
     if (!e || e.status === EventStatus.DRAFT) throw new NotFoundException('Event not found');
     const remaining = Math.max(e.capacity - e.ticketsIssued, 0);
+    const ticketTypes = await this.dataSource.query(
+      `SELECT ticket_type_id, type_name, price, currency, quantity_total,
+              quantity_sold, quantity_reserved,
+              GREATEST(quantity_total - quantity_sold - quantity_reserved, 0) AS remaining
+       FROM ticket_types
+       WHERE event_id = $1 AND is_active = TRUE
+       ORDER BY ticket_type_id`,
+      [eventId],
+    );
     return {
       eventId: e.id,
       status: e.status,
@@ -26,6 +38,16 @@ export class CapacityService {
       remainingTickets: remaining,
       soldOut: remaining === 0,
       salesOpen: e.status === EventStatus.PUBLISHED && e.endAt > new Date() && remaining > 0,
+      ticketTypes: ticketTypes.map((ticketType) => ({
+        ticketTypeId: String(ticketType.ticket_type_id),
+        name: ticketType.type_name,
+        price: Number(ticketType.price),
+        currency: String(ticketType.currency).trim(),
+        quantity: Number(ticketType.quantity_total),
+        sold: Number(ticketType.quantity_sold),
+        reserved: Number(ticketType.quantity_reserved),
+        remaining: Number(ticketType.remaining),
+      })),
     };
   }
 
