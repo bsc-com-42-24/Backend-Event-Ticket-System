@@ -41,7 +41,7 @@ describe('TicketPurchasesService', () => {
   it('throws NotFound when the ticket type does not exist', async () => {
     client.query
       .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({ rows: [] }) // SELECT
+      .mockResolvedValueOnce({ rows: [] }) // ticket type's event id
       .mockResolvedValueOnce({}); // ROLLBACK
 
     await expect(
@@ -53,6 +53,8 @@ describe('TicketPurchasesService', () => {
   it('rejects when not enough tickets are available', async () => {
     client.query
       .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ event_id: 1 }] }) // ticket type's event id
+      .mockResolvedValueOnce({ rows: [{ event_id: 1 }] }) // lock event
       .mockResolvedValueOnce({ rows: [ticketRow] }) // SELECT
       .mockResolvedValueOnce({}); // ROLLBACK
 
@@ -64,6 +66,8 @@ describe('TicketPurchasesService', () => {
   it('creates a PENDING order and reserves tickets', async () => {
     client.query
       .mockResolvedValueOnce({}) // BEGIN
+      .mockResolvedValueOnce({ rows: [{ event_id: 1 }] }) // ticket type's event id
+      .mockResolvedValueOnce({ rows: [{ event_id: 1 }] }) // lock event
       .mockResolvedValueOnce({ rows: [ticketRow] }) // SELECT
       .mockResolvedValueOnce({ rowCount: 1 }) // UPDATE event
       .mockResolvedValueOnce({}) // UPDATE reserved

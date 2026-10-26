@@ -9,6 +9,7 @@ import { environmentValidationSchema } from './config/environment.validation';
 import { EventsModule } from './events/events.module';
 import { TicketPurchasesModule } from './ticket-purchases/ticket-purchases.module';
 import { TicketsModule } from './tickets/tickets.module';
+import { TicketTypesModule } from './ticket-types/ticket-types.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -38,6 +39,7 @@ import { UsersModule } from './users/users.module';
     CapacityModule,
     TicketPurchasesModule,
     TicketsModule,
+    TicketTypesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
