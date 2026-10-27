@@ -25,17 +25,11 @@ export class Ticket {
   @Column({ name: 'ticket_number', type: 'varchar', length: 50 })
   ticketNumber: string;
 
-  @Column({ name: 'order_item_id', type: 'bigint' })
-  orderItemId: string;
-
   @Column({ name: 'event_id', type: 'bigint' })
   eventId: string;
 
   @Column({ name: 'ticket_type_id', type: 'bigint' })
   ticketTypeId: string;
-
-  @Column({ name: 'owner_id', type: 'bigint' })
-  ownerId: string;
 
   @Column({ name: 'qr_token', type: 'uuid' })
   qrToken: string;
