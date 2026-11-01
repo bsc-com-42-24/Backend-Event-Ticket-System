@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
+import { EventChecker } from '../events/entities/event-checker.entity';
+import { Event } from '../events/entities/event.entity';
 import { User } from '../users/user.entity';
 
 export default new DataSource({
@@ -9,7 +11,7 @@ export default new DataSource({
   username: process.env.DB_USERNAME ?? 'postgres',
   password: process.env.DB_PASSWORD ?? 'postgres',
   database: process.env.DB_NAME ?? 'ticket_master',
-  entities: [User],
+  entities: [User, Event, EventChecker],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: false,
   uuidExtension: 'pgcrypto',
