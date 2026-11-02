@@ -38,7 +38,31 @@ import { TicketsService } from './tickets.service';
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
 
-  // static routes stay above ':ticketNumber'
+  @Post('purchase')
+  @HttpCode(201)
+  @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
+  purchaseTicket(
+    @Body() body: { eventId: string; ticketTypeId: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ticketsService.purchaseTicket(user.userId, body.eventId, body.ticketTypeId);
+  }
+
+  @Get('history')
+  @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
+  getHistory(@CurrentUser() user: AuthenticatedUser) {
+    return this.ticketsService.getCustomerBuyingHistory(user.userId);
+  }
+
+  @Post('scan')
+  @HttpCode(200)
+  @Roles(UserRole.VALIDATOR, UserRole.ADMIN)
+  scanQrToken(
+    @Body() body: { qrToken: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ticketsService.verifyScannedQr(body.qrToken, user.userId);
+  }
 
   @Post('events/:eventId/generate')
   @HttpCode(200)

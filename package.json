@@ -9,7 +9,8 @@
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
-    "start:dev": "nest start --watch",
+    ""start:dev": "tsc-watch --onSuccess \"nest start\" --max-old-space-size=4096",
+
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "migration:run": "typeorm-ts-node-commonjs -d src/database/data-source.ts migration:run",

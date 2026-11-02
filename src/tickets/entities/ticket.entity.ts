@@ -12,7 +12,6 @@ export enum TicketStatus {
   REFUNDED = 'REFUNDED',
 }
 
-/** Maps the `tickets` table of event_ticket_booking_schema.sql. */
 @Entity('tickets')
 export class Ticket {
   @PrimaryGeneratedColumn('identity', {
@@ -30,6 +29,9 @@ export class Ticket {
 
   @Column({ name: 'ticket_type_id', type: 'bigint' })
   ticketTypeId: string;
+
+  @Column({ name: 'customer_id', type: 'bigint' })
+  customerId: string;
 
   @Column({ name: 'qr_token', type: 'uuid' })
   qrToken: string;

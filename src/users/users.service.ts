@@ -100,6 +100,18 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
+  async updateVerificationStatus(targetUserId: string, isVerified: boolean): Promise<User> {
+    const user = await this.usersRepository.findOne({
+      where: { id: targetUserId },
+    });
+    if (!user) {
+      throw new NotFoundException('Organizer user not found');
+    }
+
+    user.isVerified = isVerified;
+    return this.usersRepository.save(user);
+  }
+
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
   }

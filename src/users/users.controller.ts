@@ -75,4 +75,16 @@ export class UsersController {
   ) {
     return this.usersService.updateRole(userId, input.role, admin.userId);
   }
+
+  @Patch(':userId/verify-organizer')
+  @ApiOperation({ summary: 'Admin verify organiser platform verification status' })
+  @ApiParam({ name: 'userId', description: 'Positive integer organizer user ID.' })
+  @ApiOkResponse({ description: 'The organizer verification status was successfully updated.' })
+  @ApiNotFoundResponse({ description: 'The target user profile line was not found.' })
+  verifyOrganizer(
+    @Param('userId', ParseBigIntIdPipe) userId: string,
+    @Body() input: { isVerified: boolean },
+  ) {
+    return this.usersService.updateVerificationStatus(userId, input.isVerified);
+  }
 }

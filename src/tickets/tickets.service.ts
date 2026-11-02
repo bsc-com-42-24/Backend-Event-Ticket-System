@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes, randomUUID } from 'crypto';
@@ -18,12 +19,6 @@ interface TicketForValidation {
   event_id: string;
   ticket_status: string;
   event_status: string;
-}
-
-interface UpdatedTicket {
-  ticket_id: string;
-  event_id: string;
-  checked_in_at: Date;
 }
 
 export type TicketValidationResult =
@@ -53,25 +48,132 @@ export class TicketsService {
     private readonly dataSource: DataSource,
   ) {}
 
-  /**
-   * Organizer action: generate the tickets for an event from the capacity and
-   * ticket-type quantities the organizer configured.
-   *
-   * - Creates only the tickets that are still missing for each active ticket
-   *   type, so calling it twice never creates duplicates.
-   * - Never lets the total exceed the event capacity.
-   * - Every ticket gets a random, unguessable qr_token.
-   * - Runs in one transaction with the event row locked.
-   */
+  async purchaseTicket(userId: string, eventId: string, ticketTypeId: string) {
+    return this.dataSource.transaction(async (m) => {
+      const ticketTypes = await m.query(
+        `SELECT ticket_type_id, quantity_sold, quantity_reserved, quantity_total, is_active
+         FROM ticket_types WHERE ticket_type_id = $1 AND event_id = $2 FOR UPDATE`,
+        [ticketTypeId, eventId],
+      );
+      const ticketType = ticketTypes[0];
+
+      if (!ticketType || !ticketType.is_active) {
+        throw new NotFoundException('Ticket type unavailable');
+      }
+
+      if (ticketType.quantity_sold + ticketType.quantity_reserved >= ticketType.quantity_total) {
+        throw new BadRequestException('Tickets are sold out');
+      }
+
+      const ticketNumber = `TKT-${randomBytes(5).toString('hex').toUpperCase()}`;
+      const qrToken = randomUUID();
+
+      await m.query(
+        `INSERT INTO tickets (ticket_number, event_id, ticket_type_id, customer_id, qr_token, status)
+         VALUES ($1, $2, $3, $4, $5, 'ISSUED')`,
+        [ticketNumber, eventId, ticketTypeId, userId, qrToken],
+      );
+
+      await m.query(
+        `UPDATE ticket_types SET quantity_sold = quantity_sold + 1 WHERE ticket_type_id = $1`,
+        [ticketTypeId],
+      );
+
+      await m.query(
+        `UPDATE events SET tickets_issued = tickets_issued + 1 WHERE event_id = $1`,
+        [eventId],
+      );
+
+      const qrCodeDataUrl = await this.qrCodeService.generateQrCode(qrToken);
+
+      return {
+        ticketNumber,
+        qrToken,
+        qrCodeDataUrl,
+        status: 'ISSUED',
+      };
+    });
+  }
+
+  async getCustomerBuyingHistory(userId: string) {
+    return this.dataSource.query(
+      `SELECT t.ticket_id, t.ticket_number, t.status, t.issued_at, 
+              e.title as event_title, e.start_at, tt.type_name, tt.price, tt.currency
+       FROM tickets t
+       JOIN events e ON t.event_id = e.event_id
+       JOIN ticket_types tt ON t.ticket_type_id = tt.ticket_type_id
+       WHERE t.customer_id = $1
+       ORDER BY t.issued_at DESC`,
+      [userId],
+    );
+  }
+
+  async verifyScannedQr(qrToken: string, staffUserId: string) {
+    const records = await this.dataSource.query(
+      `SELECT t.ticket_id, t.ticket_number, t.status as ticket_status, 
+              u.full_name as customer_name, u.email as customer_email, u.phone as customer_phone,
+              e.title as event_title, e.status as event_status
+       FROM tickets t
+       JOIN users u ON t.customer_id = u.user_id
+       JOIN events e ON t.event_id = e.event_id
+       WHERE t.qr_token = $1`,
+      [qrToken],
+    );
+
+    const ticket = records[0];
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (ticket.ticket_status === 'USED') {
+      await this.logValidation(ticket.ticket_id, staffUserId, 'REJECTED', 'ALREADY_USED');
+      return { result: 'REJECTED', reason: 'ALREADY_USED', ticketDetails: ticket };
+    }
+
+    if (ticket.ticket_status === 'CANCELLED' || ticket.event_status === 'CANCELLED') {
+      await this.logValidation(ticket.ticket_id, staffUserId, 'REJECTED', 'CANCELLED');
+      return { result: 'REJECTED', reason: 'CANCELLED', ticketDetails: ticket };
+    }
+
+    await this.dataSource.transaction(async (m) => {
+      await m.query(
+        `UPDATE tickets SET status = 'USED', checked_in_at = CURRENT_TIMESTAMP WHERE ticket_id = $1`,
+        [ticket.ticket_id],
+      );
+      await m.query(
+        `INSERT INTO ticket_validations (ticket_id, checked_by, result) VALUES ($1, $2, 'ACCEPTED')`,
+        [ticket.ticket_id, staffUserId],
+      );
+    });
+
+    return {
+      result: 'ACCEPTED',
+      message: 'Check-in validated successfully',
+      customer: {
+        name: ticket.customer_name,
+        email: ticket.customer_email,
+        phone: ticket.customer_phone,
+      },
+      ticket: {
+        number: ticket.ticket_number,
+        status: 'USED',
+      },
+      event: {
+        title: ticket.event_title,
+      },
+    };
+  }
+
+  private async logValidation(ticketId: string, staffId: string, result: string, reason: string) {
+    await this.dataSource.query(
+      `INSERT INTO ticket_validations (ticket_id, checked_by, result, reason) VALUES ($1, $2, $3, $4)`,
+      [ticketId, staffId, result, reason],
+    );
+  }
+
   async generateTickets(eventId: string, user: AuthenticatedUser) {
     return this.dataSource.transaction(async (m) => {
-      const events: {
-        event_id: string;
-        organizer_id: string;
-        status: string;
-        capacity: number;
-        tickets_issued: number;
-      }[] = await m.query(
+      const events = await m.query(
         `SELECT event_id, organizer_id, status, capacity, tickets_issued
          FROM events WHERE event_id = $1 FOR UPDATE`,
         [eventId],
@@ -90,11 +192,7 @@ export class TicketsService {
         );
       }
 
-      const types: {
-        ticket_type_id: string;
-        type_name: string;
-        quantity_total: number;
-      }[] = await m.query(
+      const types = await m.query(
         `SELECT ticket_type_id, type_name, quantity_total
          FROM ticket_types
          WHERE event_id = $1 AND is_active = TRUE
@@ -108,15 +206,15 @@ export class TicketsService {
         );
       }
 
-      const counts: { ticket_type_id: string; n: number }[] = await m.query(
+      const counts = await m.query(
         `SELECT ticket_type_id, COUNT(*)::int AS n
          FROM tickets WHERE event_id = $1
          GROUP BY ticket_type_id`,
         [eventId],
       );
-      const existing = new Map(counts.map((c) => [String(c.ticket_type_id), c.n]));
+      const existing = new Map(counts.map((c: any) => [String(c.ticket_type_id), c.n]));
 
-      const plan = types.map((t) => {
+      const plan = types.map((t: any) => {
         const have = existing.get(String(t.ticket_type_id)) ?? 0;
         return {
           ticketTypeId: t.ticket_type_id,
@@ -125,7 +223,7 @@ export class TicketsService {
           totalAfter: Math.max(have, t.quantity_total),
         };
       });
-      const totalNew = plan.reduce((sum, p) => sum + p.toCreate, 0);
+      const totalNew = plan.reduce((sum: number, p: any) => sum + p.toCreate, 0);
 
       if (event.tickets_issued + totalNew > event.capacity) {
         throw new ConflictException(
@@ -164,7 +262,7 @@ export class TicketsService {
         capacity: event.capacity,
         ticketsIssued: event.tickets_issued + totalNew,
         newlyCreated: totalNew,
-        ticketTypes: plan.map((p) => ({
+        ticketTypes: plan.map((p: any) => ({
           ticketTypeId: p.ticketTypeId,
           typeName: p.typeName,
           created: p.toCreate,
@@ -174,7 +272,6 @@ export class TicketsService {
     });
   }
 
-  /** All tickets of an event, for its organizer (or an admin). */
   async findByEvent(eventId: string, user: AuthenticatedUser) {
     await this.assertCanManageEvent(eventId, user, 'Event not found');
     return this.ticketRepository.find({
@@ -183,7 +280,6 @@ export class TicketsService {
     });
   }
 
-  /** One ticket, visible to the organizer of its event or an admin. */
   async getTicket(ticketNumber: string, user: AuthenticatedUser) {
     const ticket = await this.ticketRepository.findOne({
       where: { ticketNumber },
@@ -195,150 +291,15 @@ export class TicketsService {
     return ticket;
   }
 
-  /** Ticket plus a QR code (PNG data URL) that encodes the secret qr_token. */
   async getTicketWithQrCode(ticketNumber: string, user: AuthenticatedUser) {
     const ticket = await this.getTicket(ticketNumber, user);
     const qrCode = await this.qrCodeService.generateQrCode(ticket.qrToken);
     return { ticket, qrCode };
   }
 
-  /** Throws a 404 unless the user organizes the event or is an admin. */
   private async assertCanManageEvent(
     eventId: string,
     user: AuthenticatedUser,
     notFoundMessage: string,
   ): Promise<void> {
-    const rows: { organizer_id: string }[] = await this.dataSource.query(
-      `SELECT organizer_id FROM events WHERE event_id = $1`,
-      [eventId],
-    );
-    const event = rows[0];
-    if (
-      !event ||
-      (String(event.organizer_id) !== String(user.userId) &&
-        user.role !== UserRole.ADMIN)
-    ) {
-      throw new NotFoundException(notFoundMessage);
-    }
-  }
-
-  async validateTicket(
-    qrToken: string,
-    validatorId: string,
-    attemptedEventId?: string,
-  ): Promise<TicketValidationResult> {
-    const result = await this.dataSource.transaction(async (manager) => {
-      const tickets: TicketForValidation[] = await manager.query(
-        `SELECT t.ticket_id, t.event_id, t.status AS ticket_status, e.status AS event_status
-         FROM tickets t
-         JOIN events e ON e.event_id = t.event_id
-         WHERE t.qr_token = $1
-         FOR UPDATE OF t, e`,
-        [qrToken],
-      );
-
-      const ticket = tickets[0];
-      if (!ticket) {
-        return this.rejected(TicketValidationReason.NOT_FOUND);
-      }
-      if (ticket.ticket_status === 'USED') {
-        return this.rejected(
-          TicketValidationReason.ALREADY_USED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
-      }
-      if (
-        ticket.ticket_status === 'CANCELLED' ||
-        ticket.ticket_status === 'REFUNDED'
-      ) {
-        return this.rejected(
-          TicketValidationReason.CANCELLED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
-      }
-      if (ticket.event_status === 'CANCELLED') {
-        return this.rejected(
-          TicketValidationReason.EVENT_CANCELLED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
-      }
-      if (attemptedEventId && attemptedEventId !== ticket.event_id) {
-        return this.rejected(
-          TicketValidationReason.WRONG_EVENT,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
-      }
-
-      const updatedTickets: UpdatedTicket[] = await manager.query(
-        `UPDATE tickets
-         SET status = 'USED', checked_in_at = CURRENT_TIMESTAMP
-         WHERE ticket_id = $1 AND status = 'ISSUED'
-         RETURNING ticket_id, event_id, checked_in_at`,
-        [ticket.ticket_id],
-      );
-      const updated = updatedTickets[0];
-      if (!updated) {
-        return this.rejected(
-          TicketValidationReason.ALREADY_USED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
-      }
-
-      return {
-        accepted: true as const,
-        reason: null,
-        ticketId: updated.ticket_id,
-        eventId: updated.event_id,
-        validatedAt: updated.checked_in_at,
-      };
-    });
-
-    await this.recordValidation(result, validatorId, attemptedEventId);
-    return result;
-  }
-
-  private rejected(
-    reason: TicketValidationReason,
-    ticketId: string | null = null,
-    eventId: string | null = null,
-  ): TicketValidationResult {
-    return {
-      accepted: false,
-      reason,
-      ticketId,
-      eventId,
-      validatedAt: null,
-    };
-  }
-
-  private async recordValidation(
-    result: TicketValidationResult,
-    validatorId: string,
-    attemptedEventId?: string,
-  ): Promise<void> {
-    try {
-      await this.dataSource.query(
-        `INSERT INTO ticket_validations
-           (ticket_id, checked_by, attempted_event_id, result, reason)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [
-          result.ticketId,
-          validatorId,
-          attemptedEventId ?? null,
-          result.accepted ? 'ACCEPTED' : 'REJECTED',
-          result.reason,
-        ],
-      );
-    } catch (error) {
-      this.logger.error(
-        'Failed to record ticket validation attempt',
-        error instanceof Error ? error.stack : String(error),
-      );
-    }
-  }
-}
+    const rows = await this.dataSource.query(
