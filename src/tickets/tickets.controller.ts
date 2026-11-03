@@ -25,6 +25,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { NumericIdPipe } from '../events/pipes/numeric-id.pipe';
 import { UserRole } from '../users/user-role.enum';
+import { PurchaseTicketDto } from './dto/purchase-ticket.dto';
+import { ScanQrDto } from './dto/scan-qr.dto';
 import {
   TicketValidationResponseDto,
   ValidateTicketDto,
@@ -38,7 +40,68 @@ import { TicketsService } from './tickets.service';
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
 
-  // static routes stay above ':ticketNumber'
+  // Static routes (purchase, history, scan, validate, events/...) must stay
+  // above ':ticketNumber'.
+
+  @Post('purchase')
+  @HttpCode(201)
+  @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Buy a ticket of a ticket type (claims a generated ticket)',
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid ids, sales not open, or tickets sold out.',
+  })
+  @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
+  @ApiForbiddenResponse({
+    description: 'Only customers and administrators may buy tickets.',
+  })
+  @ApiNotFoundResponse({
+    description: 'The ticket type or event is unavailable.',
+  })
+  purchaseTicket(
+    @Body() body: PurchaseTicketDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ticketsService.purchaseTicket(
+      user.userId,
+      body.eventId,
+      body.ticketTypeId,
+    );
+  }
+
+  @Get('history')
+  @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'My purchased tickets, each with its QR code' })
+  @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
+  @ApiForbiddenResponse({
+    description: 'Only customers and administrators may view history.',
+  })
+  getHistory(@CurrentUser() user: AuthenticatedUser) {
+    return this.ticketsService.getCustomerBuyingHistory(user.userId);
+  }
+
+  @Post('scan')
+  @HttpCode(200)
+  @Roles(UserRole.VALIDATOR, UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Scan a QR token: validates entry and returns the ticket details',
+  })
+  @ApiOkResponse({
+    description:
+      'Returns accepted=true or false with a reason, plus ticket details.',
+  })
+  @ApiBadRequestResponse({ description: 'The QR token is invalid.' })
+  @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
+  @ApiForbiddenResponse({
+    description: 'Only check-in staff and administrators may scan tickets.',
+  })
+  scanQrToken(
+    @Body() body: ScanQrDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ticketsService.scanTicket(body.qrToken, user.userId);
+  }
 
   @Post('events/:eventId/generate')
   @HttpCode(200)
