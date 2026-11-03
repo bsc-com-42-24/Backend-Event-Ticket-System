@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -201,7 +202,7 @@ export class TicketsService {
     const qrCode = await this.qrCodeService.generateQrCode(ticket.qrToken);
     return { ticket, qrCode };
   }
-
+  
   /** Throws a 404 unless the user organizes the event or is an admin. */
   private async assertCanManageEvent(
     eventId: string,
@@ -221,7 +222,6 @@ export class TicketsService {
       throw new NotFoundException(notFoundMessage);
     }
   }
-
   async validateTicket(
     qrToken: string,
     validatorId: string,
@@ -340,5 +340,122 @@ export class TicketsService {
         error instanceof Error ? error.stack : String(error),
       );
     }
+  }
+
+  /**
+   * Customer action: claim one unassigned generated ticket of a ticket type.
+   * Tickets are created by the organizer's generate step, so a purchase never
+   * creates new rows and can never exceed the event capacity.
+   */
+  async purchaseTicket(userId: string, eventId: string, ticketTypeId: string) {
+    return this.dataSource.transaction(async (m) => {
+      const [tt] = await m.query(
+        `SELECT tt.ticket_type_id, tt.is_active, tt.sales_start_at, tt.sales_end_at,
+                e.status AS event_status
+         FROM ticket_types tt JOIN events e ON e.event_id = tt.event_id
+         WHERE tt.ticket_type_id = $1 AND tt.event_id = $2
+         FOR UPDATE OF tt`,
+        [ticketTypeId, eventId],
+      );
+      if (!tt || !tt.is_active || tt.event_status !== 'PUBLISHED') {
+        throw new NotFoundException('Ticket type unavailable');
+      }
+      const now = new Date();
+      if (
+        (tt.sales_start_at && now < tt.sales_start_at) ||
+        (tt.sales_end_at && now > tt.sales_end_at)
+      ) {
+        throw new BadRequestException('Ticket sales are not open');
+      }
+
+      const [ticket] = await m.query(
+        `SELECT ticket_id, ticket_number, qr_token FROM tickets
+         WHERE event_id = $1 AND ticket_type_id = $2
+           AND customer_id IS NULL AND status = 'ISSUED'
+         ORDER BY ticket_id LIMIT 1
+         FOR UPDATE SKIP LOCKED`,
+        [eventId, ticketTypeId],
+      );
+      if (!ticket) throw new BadRequestException('Tickets are sold out');
+
+      await m.query(`UPDATE tickets SET customer_id = $1 WHERE ticket_id = $2`, [
+        userId,
+        ticket.ticket_id,
+      ]);
+      await m.query(
+        `UPDATE ticket_types SET quantity_sold = quantity_sold + 1 WHERE ticket_type_id = $1`,
+        [ticketTypeId],
+      );
+
+      return {
+        ticketNumber: ticket.ticket_number,
+        qrToken: ticket.qr_token,
+        qrCodeDataUrl: await this.qrCodeService.generateQrCode(ticket.qr_token),
+        status: 'ISSUED',
+      };
+    });
+  }
+
+  /** A customer's tickets, each with its QR code image. */
+  async getCustomerBuyingHistory(userId: string) {
+    const rows = await this.dataSource.query(
+      `SELECT t.ticket_id, t.ticket_number, t.status, t.issued_at, t.qr_token,
+              e.title AS event_title, e.start_at, tt.type_name, tt.price, tt.currency
+       FROM tickets t
+       JOIN events e ON t.event_id = e.event_id
+       JOIN ticket_types tt ON t.ticket_type_id = tt.ticket_type_id
+       WHERE t.customer_id = $1
+       ORDER BY t.issued_at DESC`,
+      [userId],
+    );
+    return Promise.all(
+      rows.map(async (r: any) => {
+        const { qr_token, ...rest } = r;
+        return {
+          ...rest,
+          qrCodeDataUrl: await this.qrCodeService.generateQrCode(qr_token),
+        };
+      }),
+    );
+  }
+
+    /** Scan = validateTicket + the ticket details the staff member needs to see. */
+  async scanTicket(
+    qrToken: string,
+    validatorId: string,
+    attemptedEventId?: string,
+  ) {
+    const result = await this.validateTicket(
+      qrToken,
+      validatorId,
+      attemptedEventId,
+    );
+    if (!result.ticketId) {
+      return { ...result, details: null }; // NOT_FOUND
+    }
+    const [d] = await this.dataSource.query(
+      `SELECT t.ticket_number, t.checked_in_at, tt.type_name,
+              e.title AS event_title, u.full_name, u.email
+       FROM tickets t
+       JOIN ticket_types tt ON tt.ticket_type_id = t.ticket_type_id
+       JOIN events e ON e.event_id = t.event_id
+       LEFT JOIN users u ON u.user_id = t.customer_id
+       WHERE t.ticket_id = $1`,
+      [result.ticketId],
+    );
+    return {
+      ...result,
+      details: d
+        ? {
+            ticketNumber: d.ticket_number,
+            ticketType: d.type_name,
+            eventTitle: d.event_title,
+            checkedInAt: d.checked_in_at,
+            customer: d.full_name
+              ? { name: d.full_name, email: d.email }
+              : null,
+          }
+        : null,
+    };
   }
 }
