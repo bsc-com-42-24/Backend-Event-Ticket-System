@@ -419,9 +419,17 @@ export class TicketsService {
     );
   }
 
-  /** Scan = validateTicket + the ticket details the staff member needs to see. */
-  async scanTicket(qrToken: string, validatorId: string) {
-    const result = await this.validateTicket(qrToken, validatorId);
+    /** Scan = validateTicket + the ticket details the staff member needs to see. */
+  async scanTicket(
+    qrToken: string,
+    validatorId: string,
+    attemptedEventId?: string,
+  ) {
+    const result = await this.validateTicket(
+      qrToken,
+      validatorId,
+      attemptedEventId,
+    );
     if (!result.ticketId) {
       return { ...result, details: null }; // NOT_FOUND
     }

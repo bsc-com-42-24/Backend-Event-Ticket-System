@@ -26,7 +26,6 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { NumericIdPipe } from '../events/pipes/numeric-id.pipe';
 import { UserRole } from '../users/user-role.enum';
 import { PurchaseTicketDto } from './dto/purchase-ticket.dto';
-import { ScanQrDto } from './dto/scan-qr.dto';
 import {
   TicketValidationResponseDto,
   ValidateTicketDto,
@@ -40,7 +39,7 @@ import { TicketsService } from './tickets.service';
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
 
-  // Static routes (purchase, history, scan, validate, events/...) must stay
+  // Static routes (purchase, history, validate, events/...) must stay
   // above ':ticketNumber'.
 
   @Post('purchase')
@@ -79,28 +78,6 @@ export class TicketsController {
   })
   getHistory(@CurrentUser() user: AuthenticatedUser) {
     return this.ticketsService.getCustomerBuyingHistory(user.userId);
-  }
-
-  @Post('scan')
-  @HttpCode(200)
-  @Roles(UserRole.VALIDATOR, UserRole.ADMIN)
-  @ApiOperation({
-    summary: 'Scan a QR token: validates entry and returns the ticket details',
-  })
-  @ApiOkResponse({
-    description:
-      'Returns accepted=true or false with a reason, plus ticket details.',
-  })
-  @ApiBadRequestResponse({ description: 'The QR token is invalid.' })
-  @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
-  @ApiForbiddenResponse({
-    description: 'Only check-in staff and administrators may scan tickets.',
-  })
-  scanQrToken(
-    @Body() body: ScanQrDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.ticketsService.scanTicket(body.qrToken, user.userId);
   }
 
   @Post('events/:eventId/generate')
@@ -149,10 +126,13 @@ export class TicketsController {
   @Post('validate')
   @HttpCode(200)
   @Roles(UserRole.VALIDATOR, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Validate a ticket QR token for event entry' })
+  @ApiOperation({
+    summary:
+      'Validate a ticket QR token for event entry (returns the ticket details)',
+  })
   @ApiOkResponse({
     description:
-      'Returns accepted=true or accepted=false with a specific rejection reason.',
+      'Returns accepted=true or accepted=false with a specific rejection reason, plus a details object (ticket number, type, event, customer) when the ticket exists.',
     type: TicketValidationResponseDto,
   })
   @ApiBadRequestResponse({
@@ -166,7 +146,7 @@ export class TicketsController {
     @Body() input: ValidateTicketDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.ticketsService.validateTicket(
+    return this.ticketsService.scanTicket(
       input.qrToken,
       user.userId,
       input.eventId,

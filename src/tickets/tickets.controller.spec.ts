@@ -12,6 +12,9 @@ describe('TicketsController', () => {
     generateTickets: jest.fn(),
     findByEvent: jest.fn(),
     validateTicket: jest.fn(),
+    scanTicket: jest.fn(),
+    purchaseTicket: jest.fn(),
+    getCustomerBuyingHistory: jest.fn(),
     getTicket: jest.fn(),
     getTicketWithQrCode: jest.fn(),
   };
@@ -74,13 +77,13 @@ describe('TicketsController', () => {
       eventId: '7',
     };
     const result = { accepted: true, reason: null };
-    service.validateTicket.mockResolvedValue(result);
+    service.scanTicket.mockResolvedValue(result);
 
     await expect(
       controller.validateTicket(input as any, user),
     ).resolves.toEqual(result);
 
-    expect(service.validateTicket).toHaveBeenCalledWith(
+    expect(service.scanTicket).toHaveBeenCalledWith(
       'secret-qr-token',
       '5',
       '7',
@@ -116,5 +119,27 @@ describe('TicketsController', () => {
       'TKT-1',
       user,
     );
+  });
+it('purchases a ticket for the current user', async () => {
+    const result = { ticketNumber: 'TKT-1', qrToken: 'tok' };
+    service.purchaseTicket.mockResolvedValue(result);
+
+    await expect(
+      controller.purchaseTicket(
+        { eventId: '7', ticketTypeId: '3' } as any,
+        user,
+      ),
+    ).resolves.toEqual(result);
+
+    expect(service.purchaseTicket).toHaveBeenCalledWith('5', '7', '3');
+  });
+
+  it("returns the current user's buying history", async () => {
+    const result = [{ ticketNumber: 'TKT-1', qrCodeDataUrl: 'data:...' }];
+    service.getCustomerBuyingHistory.mockResolvedValue(result);
+
+    await expect(controller.getHistory(user)).resolves.toEqual(result);
+
+    expect(service.getCustomerBuyingHistory).toHaveBeenCalledWith('5');
   });
 });
