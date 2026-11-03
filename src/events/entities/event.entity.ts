@@ -2,10 +2,12 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { EventStatus } from '../enums/event-status.enum';
+import { EventChecker } from './event-checker.entity';
 
 /** Maps the `events` table of event_ticket_booking_schema.sql (+ capacity columns). */
 @Entity('events')
@@ -61,4 +63,7 @@ export class Event {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  @OneToMany(() => EventChecker, (checker) => checker.event)
+  checkers: EventChecker[];
 }
