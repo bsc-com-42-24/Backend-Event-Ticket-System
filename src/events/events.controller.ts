@@ -3,11 +3,12 @@ import {
   Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';           // Member 2
-import { RolesGuard } from '../auth/guards/roles.guard';                // Member 2
-import { Roles } from '../auth/decorators/roles.decorator';            // Member 2
-import { CurrentUser } from '../auth/decorators/current-user.decorator'; // Member 2
-import { UserRole } from '../users/user-role.enum';                      // Member 2
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { UserRole } from '../users/user-role.enum';
+import { VerifiedOrganizerGuard } from '../auth/guards/verified-organizer.guard';
 import { CreateEventDto } from './dto/create-event.dto';
 import { QueryEventsDto, QueryMyEventsDto } from './dto/query-events.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -18,7 +19,7 @@ import type { AuthUser } from './types/auth-user.type';
 
 const ManagerOnly = () =>
   applyDecorators(
-    UseGuards(JwtAuthGuard, RolesGuard),
+    UseGuards(JwtAuthGuard, RolesGuard, VerifiedOrganizerGuard),
     Roles(UserRole.EVENT_MANAGER, UserRole.ADMIN),
     ApiBearerAuth(),
   );
@@ -35,7 +36,6 @@ export class EventsController {
     return this.events.create(dto, user);
   }
 
-  // must stay above @Get(':id')
   @Get('mine')
   @ManagerOnly()
   @ApiOperation({ summary: 'List events I manage (all statuses)' })

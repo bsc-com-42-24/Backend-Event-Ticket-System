@@ -19,12 +19,7 @@ interface TicketForValidation {
   event_id: string;
   ticket_status: string;
   event_status: string;
-}
-
-interface UpdatedTicket {
-  ticket_id: string;
-  event_id: string;
-  checked_in_at: Date;
+  checked_in_at: Date | null;
 }
 
 export type TicketValidationResult =
@@ -54,16 +49,7 @@ export class TicketsService {
     private readonly dataSource: DataSource,
   ) {}
 
-  /**
-   * Organizer action: generate the tickets for an event from the capacity and
-   * ticket-type quantities the organizer configured.
-   *
-   * - Creates only the tickets that are still missing for each active ticket
-   *   type, so calling it twice never creates duplicates.
-   * - Never lets the total exceed the event capacity.
-   * - Every ticket gets a random, unguessable qr_token.
-   * - Runs in one transaction with the event row locked.
-   */
+  /** Organizer action: generate administrative/bulk tickets pre-allocated for an event */
   async generateTickets(eventId: string, user: AuthenticatedUser) {
     return this.dataSource.transaction(async (m) => {
       const events: {
@@ -222,81 +208,111 @@ export class TicketsService {
       throw new NotFoundException(notFoundMessage);
     }
   }
+
+  /**
+   * Validates a scanned ticket for entry and marks it as checked in.
+   * The frontend scans the QR code and sends the decoded qr_token here, so it
+   * can also be tested directly (e.g. in Swagger) with a plain token.
+   * Never throws for an invalid ticket: it returns accepted=false and a reason.
+   * Every attempt is recorded in ticket_validations.
+   */
   async validateTicket(
     qrToken: string,
     validatorId: string,
     attemptedEventId?: string,
   ): Promise<TicketValidationResult> {
-    const result = await this.dataSource.transaction(async (manager) => {
-      const tickets: TicketForValidation[] = await manager.query(
-        `SELECT t.ticket_id, t.event_id, t.status AS ticket_status, e.status AS event_status
-         FROM tickets t
-         JOIN events e ON e.event_id = t.event_id
-         WHERE t.qr_token = $1
-         FOR UPDATE OF t, e`,
-        [qrToken],
-      );
+    // A malformed token can't match any ticket (and would make Postgres error).
+    const uuidPattern =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!qrToken || !uuidPattern.test(qrToken)) {
+      const notFound = this.rejected(TicketValidationReason.NOT_FOUND);
+      await this.recordValidation(notFound, validatorId, attemptedEventId);
+      return notFound;
+    }
 
-      const ticket = tickets[0];
-      if (!ticket) {
-        return this.rejected(TicketValidationReason.NOT_FOUND);
-      }
-      if (ticket.ticket_status === 'USED') {
-        return this.rejected(
-          TicketValidationReason.ALREADY_USED,
-          ticket.ticket_id,
-          ticket.event_id,
+    const result = await this.dataSource.transaction(
+      async (m): Promise<TicketValidationResult> => {
+        const tickets: TicketForValidation[] = await m.query(
+          `SELECT t.ticket_id,
+                  t.event_id,
+                  t.status AS ticket_status,
+                  t.checked_in_at,
+                  e.status AS event_status
+           FROM tickets t
+           JOIN events e ON e.event_id = t.event_id
+           WHERE t.qr_token = $1::uuid
+           FOR UPDATE OF t`,
+          [qrToken],
         );
-      }
-      if (
-        ticket.ticket_status === 'CANCELLED' ||
-        ticket.ticket_status === 'REFUNDED'
-      ) {
-        return this.rejected(
-          TicketValidationReason.CANCELLED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
-      }
-      if (ticket.event_status === 'CANCELLED') {
-        return this.rejected(
-          TicketValidationReason.EVENT_CANCELLED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
-      }
-      if (attemptedEventId && attemptedEventId !== ticket.event_id) {
-        return this.rejected(
-          TicketValidationReason.WRONG_EVENT,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
-      }
+        const ticket = tickets[0];
+        if (!ticket) {
+          return this.rejected(TicketValidationReason.NOT_FOUND);
+        }
 
-      const updatedTickets: UpdatedTicket[] = await manager.query(
-        `UPDATE tickets
-         SET status = 'USED', checked_in_at = CURRENT_TIMESTAMP
-         WHERE ticket_id = $1 AND status = 'ISSUED'
-         RETURNING ticket_id, event_id, checked_in_at`,
-        [ticket.ticket_id],
-      );
-      const updated = updatedTickets[0];
-      if (!updated) {
-        return this.rejected(
-          TicketValidationReason.ALREADY_USED,
-          ticket.ticket_id,
-          ticket.event_id,
-        );
-      }
+        if (
+          attemptedEventId !== undefined &&
+          String(ticket.event_id) !== String(attemptedEventId)
+        ) {
+          return this.rejected(
+            TicketValidationReason.WRONG_EVENT,
+            ticket.ticket_id,
+            ticket.event_id,
+          );
+        }
 
-      return {
-        accepted: true as const,
-        reason: null,
-        ticketId: updated.ticket_id,
-        eventId: updated.event_id,
-        validatedAt: updated.checked_in_at,
-      };
-    });
+        if (ticket.event_status === 'CANCELLED') {
+          return this.rejected(
+            TicketValidationReason.EVENT_CANCELLED,
+            ticket.ticket_id,
+            ticket.event_id,
+          );
+        }
+
+        if (ticket.ticket_status === 'CANCELLED') {
+          return this.rejected(
+            TicketValidationReason.CANCELLED,
+            ticket.ticket_id,
+            ticket.event_id,
+          );
+        }
+
+        if (ticket.checked_in_at) {
+          return this.rejected(
+            TicketValidationReason.ALREADY_USED,
+            ticket.ticket_id,
+            ticket.event_id,
+          );
+        }
+
+        const updatedTickets: {
+          ticket_id: string;
+          event_id: string;
+          checked_in_at: Date;
+        }[] = await m.query(
+          `UPDATE tickets
+           SET checked_in_at = CURRENT_TIMESTAMP, status = 'USED'
+           WHERE ticket_id = $1 AND checked_in_at IS NULL
+           RETURNING ticket_id, event_id, checked_in_at`,
+          [ticket.ticket_id],
+        );
+        const updated = updatedTickets[0];
+        if (!updated) {
+          return this.rejected(
+            TicketValidationReason.ALREADY_USED,
+            ticket.ticket_id,
+            ticket.event_id,
+          );
+        }
+
+        return {
+          accepted: true as const,
+          reason: null,
+          ticketId: updated.ticket_id,
+          eventId: updated.event_id,
+          validatedAt: updated.checked_in_at,
+        };
+      },
+    );
 
     await this.recordValidation(result, validatorId, attemptedEventId);
     return result;
@@ -342,60 +358,6 @@ export class TicketsService {
     }
   }
 
-  /**
-   * Customer action: claim one unassigned generated ticket of a ticket type.
-   * Tickets are created by the organizer's generate step, so a purchase never
-   * creates new rows and can never exceed the event capacity.
-   */
-  async purchaseTicket(userId: string, eventId: string, ticketTypeId: string) {
-    return this.dataSource.transaction(async (m) => {
-      const [tt] = await m.query(
-        `SELECT tt.ticket_type_id, tt.is_active, tt.sales_start_at, tt.sales_end_at,
-                e.status AS event_status
-         FROM ticket_types tt JOIN events e ON e.event_id = tt.event_id
-         WHERE tt.ticket_type_id = $1 AND tt.event_id = $2
-         FOR UPDATE OF tt`,
-        [ticketTypeId, eventId],
-      );
-      if (!tt || !tt.is_active || tt.event_status !== 'PUBLISHED') {
-        throw new NotFoundException('Ticket type unavailable');
-      }
-      const now = new Date();
-      if (
-        (tt.sales_start_at && now < tt.sales_start_at) ||
-        (tt.sales_end_at && now > tt.sales_end_at)
-      ) {
-        throw new BadRequestException('Ticket sales are not open');
-      }
-
-      const [ticket] = await m.query(
-        `SELECT ticket_id, ticket_number, qr_token FROM tickets
-         WHERE event_id = $1 AND ticket_type_id = $2
-           AND customer_id IS NULL AND status = 'ISSUED'
-         ORDER BY ticket_id LIMIT 1
-         FOR UPDATE SKIP LOCKED`,
-        [eventId, ticketTypeId],
-      );
-      if (!ticket) throw new BadRequestException('Tickets are sold out');
-
-      await m.query(`UPDATE tickets SET customer_id = $1 WHERE ticket_id = $2`, [
-        userId,
-        ticket.ticket_id,
-      ]);
-      await m.query(
-        `UPDATE ticket_types SET quantity_sold = quantity_sold + 1 WHERE ticket_type_id = $1`,
-        [ticketTypeId],
-      );
-
-      return {
-        ticketNumber: ticket.ticket_number,
-        qrToken: ticket.qr_token,
-        qrCodeDataUrl: await this.qrCodeService.generateQrCode(ticket.qr_token),
-        status: 'ISSUED',
-      };
-    });
-  }
-
   /** A customer's tickets, each with its QR code image. */
   async getCustomerBuyingHistory(userId: string) {
     const rows = await this.dataSource.query(
@@ -419,7 +381,7 @@ export class TicketsService {
     );
   }
 
-    /** Scan = validateTicket + the ticket details the staff member needs to see. */
+  /** Scan = validateTicket + the ticket details the staff member needs to see. */
   async scanTicket(
     qrToken: string,
     validatorId: string,

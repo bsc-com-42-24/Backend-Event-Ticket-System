@@ -25,7 +25,6 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { NumericIdPipe } from '../events/pipes/numeric-id.pipe';
 import { UserRole } from '../users/user-role.enum';
-import { PurchaseTicketDto } from './dto/purchase-ticket.dto';
 import {
   TicketValidationResponseDto,
   ValidateTicketDto,
@@ -38,36 +37,6 @@ import { TicketsService } from './tickets.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
-
-  // Static routes (purchase, history, validate, events/...) must stay
-  // above ':ticketNumber'.
-
-  @Post('purchase')
-  @HttpCode(201)
-  @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
-  @ApiOperation({
-    summary: 'Buy a ticket of a ticket type (claims a generated ticket)',
-  })
-  @ApiBadRequestResponse({
-    description: 'Invalid ids, sales not open, or tickets sold out.',
-  })
-  @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
-  @ApiForbiddenResponse({
-    description: 'Only customers and administrators may buy tickets.',
-  })
-  @ApiNotFoundResponse({
-    description: 'The ticket type or event is unavailable.',
-  })
-  purchaseTicket(
-    @Body() body: PurchaseTicketDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.ticketsService.purchaseTicket(
-      user.userId,
-      body.eventId,
-      body.ticketTypeId,
-    );
-  }
 
   @Get('history')
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
