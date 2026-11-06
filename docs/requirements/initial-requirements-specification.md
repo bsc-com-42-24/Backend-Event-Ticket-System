@@ -38,10 +38,11 @@ FR-EVENT-01	The system shall allow an authorized Event Manager to create an even
 FR-EVENT-02	The system shall require essential event information such as title, description, venue/location, dates and capacity.
 FR-EVENT-03	The system shall allow an authorized Event Manager to view events they manage.
 FR-EVENT-04	The system shall make published events available for customer discovery.
+FR-EVENT-04a	The system shall let customers search published events by keyword, name, venue, or location.
 FR-EVENT-05	The system shall allow users to view event details.
 FR-EVENT-06	The system shall allow an authorized Event Manager to update an event.
 FR-EVENT-07	The system shall allow an authorized Event Manager to cancel an event.
-FR-EVENT-08	The system shall allow an authorized Event Manager to publish an event.
+FR-EVENT-08	The system shall publish an event when its status is set to PUBLISHED during creation or update; no separate publish endpoint is required.
 FR-EVENT-09	The system shall prevent unauthorized users from managing events.
 FR-EVENT-10	The system shall support DRAFT, PUBLISHED and CANCELLED event statuses.
 
@@ -60,7 +61,7 @@ FR-CAP-06	The system shall not allow remaining availability to become negative.
 ## Ticket Purchase
 
 [Member 4 contribution]
-The system shall allow an authenticated customer to purchase a ticket for an eligible event.
+The system shall allow an authenticated customer to claim an eligible free ticket.
 The system shall verify that the requested event exists.
 The system shall verify that the event is available for ticket sales.
 The system shall verify that capacity is available before creating a ticket.
@@ -70,6 +71,10 @@ The system shall generate a unique and secure ticket identifier.
 The system shall assign the correct initial ticket status after successful purchase.
 The system shall return relevant ticket details after successful purchase.
 The system shall not create a ticket when the event has reached capacity.
+
+Paid ticket types can be configured and displayed, but paid checkout is not
+implemented in the current backend. The API rejects paid claims until a
+payment provider and verified payment flow are added.
 
 ##  Ticket and QR Management
 
@@ -129,4 +134,3 @@ NFR-004 Maintainability: modular NestJS architecture and readable code
 ##  Deployment
 
 [Member 5 contribution]
-

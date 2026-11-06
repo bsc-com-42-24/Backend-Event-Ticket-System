@@ -1,67 +1,62 @@
 import { BadRequestException } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import { TicketsController } from './tickets.controller';
 import { TicketsService } from './tickets.service';
 
 describe('TicketsController', () => {
-  let controller: TicketsController;
   const service = {
-    findMine: jest.fn().mockResolvedValue([]),
+    generateTickets: jest.fn(),
+    findByEvent: jest.fn(),
     validateTicket: jest.fn(),
     validateTicketImage: jest.fn(),
+    purchaseTicket: jest.fn(),
+    getCustomerBuyingHistory: jest.fn(),
+    getTicket: jest.fn(),
+    getTicketWithQrCode: jest.fn(),
     getCheckInSummary: jest.fn(),
   };
+  let controller: TicketsController;
 
-  beforeEach(async () => {
-    const module = await Test.createTestingModule({
-      controllers: [TicketsController],
-      providers: [{ provide: TicketsService, useValue: service }],
-    })
-      .overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
-      .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
-      .compile();
-    controller = module.get(TicketsController);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    controller = new TicketsController(service as unknown as TicketsService);
   });
 
-  it('lists my tickets', async () => {
+  it('passes the signed-in customer ID and quantity to ticket claim', async () => {
+    service.purchaseTicket.mockResolvedValue({ quantity: 2 });
     const user = { userId: '5' } as any;
-    await controller.findMine(user);
-    expect(service.findMine).toHaveBeenCalledWith(user);
+
+    await expect(
+      controller.purchaseTicket(
+        { eventId: '7', ticketTypeId: '3', quantity: 2 },
+        user,
+      ),
+    ).resolves.toEqual({ quantity: 2 });
+    expect(service.purchaseTicket).toHaveBeenCalledWith('5', '7', '3', 2);
   });
 
-  it('passes a manually entered code and manager identity to validation', () => {
-    const user = { userId: '19', role: 'ORGANIZER' } as any;
-    const input = { ticketNumber: 'TKT-7F3A92C14B', eventId: '7' };
+  it('defaults the ticket quantity to one', () => {
+    controller.purchaseTicket(
+      { eventId: '7', ticketTypeId: '3' },
+      { userId: '5' } as any,
+    );
+    expect(service.purchaseTicket).toHaveBeenCalledWith('5', '7', '3', 1);
+  });
+
+  it('passes QR payload and validator identity to ticket validation', () => {
+    const input = { qrToken: '{"ticketId":"5","token":"secret"}' };
+    const user = { userId: '19', role: 'CHECK_IN_STAFF' } as any;
 
     controller.validateTicket(input, user);
-
     expect(service.validateTicket).toHaveBeenCalledWith(
+      input.qrToken,
+      '19',
       undefined,
-      '19',
-      '7',
-      'TKT-7F3A92C14B',
-      'ORGANIZER',
-    );
-  });
-
-  it('passes the uploaded image, event, and validator to validation', () => {
-    const user = { userId: '19', role: 'CHECK_IN_STAFF' } as any;
-    const file = { buffer: Buffer.from('image bytes') };
-    const input = { eventId: '7' };
-
-    controller.validateTicketImage(file, input, user);
-
-    expect(service.validateTicketImage).toHaveBeenCalledWith(
-      file.buffer,
-      '19',
-      '7',
+      undefined,
       'CHECK_IN_STAFF',
     );
   });
 
-  it('rejects image validation when no file was uploaded', () => {
+  it('rejects QR image validation when no file was uploaded', () => {
     expect(() =>
       controller.validateTicketImage(undefined, {}, {
         userId: '19',

@@ -3,7 +3,7 @@ import {
   IsNumberString,
   IsOptional,
   IsString,
-  IsUUID,
+  Matches,
   MaxLength,
 } from 'class-validator';
 import { TicketValidationReason } from '../enums/ticket-validation-reason.enum';
@@ -11,16 +11,19 @@ export { TicketValidationReason } from '../enums/ticket-validation-reason.enum';
 
 export class ValidateTicketDto {
   @ApiPropertyOptional({
-    description: 'The secret UUID encoded in the ticket QR code.',
-    format: 'uuid',
+    description:
+      'QR text containing the ticket ID and its secret token. Use instead of ticketNumber.',
+    example:
+      '{"ticketId":"123","token":"7a3d3bb5-cf46-4c52-8acf-389ccadf440a"}',
+    maxLength: 500,
   })
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @MaxLength(500)
   qrToken?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Ticket number for manual entry when the QR code cannot be scanned.',
+    description: 'Manual ticket number. Use instead of qrToken.',
     example: 'TKT-7F3A92C14B',
     maxLength: 50,
   })
@@ -30,13 +33,13 @@ export class ValidateTicketDto {
   ticketNumber?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Event being checked in, used to reject tickets for another event.',
+    description: 'Event being checked in; rejects tickets for a different event.',
     example: '42',
   })
   @IsOptional()
   @IsNumberString()
-  @MaxLength(30)
+  @MaxLength(18)
+  @Matches(/^[1-9]\d{0,17}$/)
   eventId?: string;
 }
 
@@ -47,7 +50,8 @@ export class ValidateTicketImageDto {
   })
   @IsOptional()
   @IsNumberString()
-  @MaxLength(30)
+  @MaxLength(18)
+  @Matches(/^[1-9]\d{0,17}$/)
   eventId?: string;
 }
 
@@ -67,8 +71,8 @@ export class ValidatedTicketDetailsDto {
   @ApiProperty()
   ticketType: string;
 
-  @ApiProperty()
-  ownerName: string;
+  @ApiProperty({ nullable: true })
+  ownerName: string | null;
 }
 
 export class ValidatedEventDetailsDto {

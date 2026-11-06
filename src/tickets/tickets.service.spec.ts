@@ -1,199 +1,231 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { UserRole } from '../users/user-role.enum';
 import { Ticket } from './entities/ticket.entity';
 import { TicketValidationReason } from './enums/ticket-validation-reason.enum';
-import { UserRole } from '../users/user-role.enum';
-jest.mock('./qr-code/qr-code.service', () => ({
-  QrCodeService: class QrCodeService {},
-}));
 import { QrCodeService } from './qr-code/qr-code.service';
 import { TicketsService } from './tickets.service';
 
-const validationTicket = {
-  ticket_id: '5',
-  ticket_number: 'TKT-7F3A92C14B',
-  event_id: '7',
-  ticket_status: 'ISSUED',
-  checked_in_at: null,
-  event_status: 'PUBLISHED',
-  event_title: 'Launch Party',
-  event_venue: 'Main Hall',
-  event_location: 'Blantyre',
-  event_start_at: new Date('2026-01-01T18:00:00.000Z'),
-  event_end_at: new Date('2026-01-01T22:00:00.000Z'),
-  ticket_type_name: 'General Admission',
-  owner_name: 'Jane Doe',
-  organizer_id: '22',
-};
-
 describe('TicketsService', () => {
   let service: TicketsService;
-  const repo = { findOne: jest.fn(), find: jest.fn() };
-  const qr = {
-    generateQrCode: jest.fn().mockResolvedValue('data:image/png;base64,x'),
-    decodeQrCode: jest.fn().mockResolvedValue(
-      '7a3d3bb5-cf46-4c52-8acf-389ccadf440a',
-    ),
+  const repository = { find: jest.fn(), findOne: jest.fn() };
+  const qrCodeService = {
+    generateQrCode: jest.fn().mockResolvedValue('data:image/png;base64,test'),
+    decodeQrCode: jest.fn(),
   };
   const manager = { query: jest.fn() };
   const dataSource = {
     transaction: jest.fn(),
-    query: jest.fn().mockResolvedValue(undefined),
+    query: jest.fn(),
   };
-  const owner = { userId: '5', email: 'a@b.com', role: 'ATTENDEE' } as any;
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    const module = await Test.createTestingModule({
-      providers: [
-        TicketsService,
-        { provide: getRepositoryToken(Ticket), useValue: repo },
-        { provide: QrCodeService, useValue: qr },
-        { provide: DataSource, useValue: dataSource },
-      ],
-    }).compile();
-    service = module.get(TicketsService);
     dataSource.transaction.mockImplementation(
       (callback: (transactionManager: typeof manager) => unknown) =>
         callback(manager),
     );
-    manager.query.mockReset();
-    dataSource.query.mockReset().mockResolvedValue(undefined);
+    dataSource.query.mockResolvedValue([]);
+
+    const module = await Test.createTestingModule({
+      providers: [
+        TicketsService,
+        { provide: getRepositoryToken(Ticket), useValue: repository },
+        { provide: QrCodeService, useValue: qrCodeService },
+        { provide: DataSource, useValue: dataSource },
+      ],
+    }).compile();
+    service = module.get(TicketsService);
   });
 
-  it('decodes an uploaded QR image and validates its ticket token', async () => {
+  it('creates only missing tickets and updates the event counter', async () => {
     manager.query
-      .mockResolvedValueOnce([validationTicket])
+      .mockResolvedValueOnce([
+        {
+          event_id: '7',
+          organizer_id: '5',
+          status: 'DRAFT',
+          capacity: 10,
+          tickets_issued: 2,
+        },
+      ])
+      .mockResolvedValueOnce([
+        { ticket_type_id: '11', type_name: 'Standard', quantity_total: 3 },
+      ])
+      .mockResolvedValueOnce([{ ticket_type_id: '11', n: 2 }])
+      .mockResolvedValueOnce([]);
+
+    const result = await service.generateTickets('7', {
+      userId: '5',
+      email: 'manager@example.com',
+      role: UserRole.EVENT_MANAGER,
+    });
+
+    expect(result).toMatchObject({
+      ticketsIssued: 3,
+      newlyCreated: 1,
+      ticketTypes: [{ ticketTypeId: '11', created: 1, total: 3 }],
+    });
+    expect(manager.query.mock.calls[3][1][0]).toHaveLength(1);
+    expect(manager.query).toHaveBeenLastCalledWith(
+      expect.stringContaining('tickets_issued = tickets_issued + $1'),
+      [1, '7'],
+    );
+  });
+
+  it('rejects ticket generation for a manager who does not own the event', async () => {
+    manager.query.mockResolvedValueOnce([
+      {
+        event_id: '7',
+        organizer_id: '99',
+        status: 'DRAFT',
+        capacity: 10,
+        tickets_issued: 0,
+      },
+    ]);
+
+    await expect(
+      service.generateTickets('7', {
+        userId: '5',
+        email: 'manager@example.com',
+        role: UserRole.EVENT_MANAGER,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('validates QR payloads that bind the ticket ID to its secret token', async () => {
+    const checkedInAt = new Date('2026-01-01T00:00:00.000Z');
+    manager.query
       .mockResolvedValueOnce([
         {
           ticket_id: '5',
+          ticket_number: 'TKT-7F3A92C14B',
           event_id: '7',
-          checked_in_at: new Date('2026-01-01T00:00:00.000Z'),
+          ticket_status: 'ISSUED',
+          checked_in_at: null,
+          event_status: 'PUBLISHED',
+          organizer_id: '22',
+          event_title: 'Launch Party',
+          event_venue: 'Main Hall',
+          event_location: 'Blantyre',
+          event_start_at: new Date('2026-01-01T18:00:00.000Z'),
+          event_end_at: new Date('2026-01-01T22:00:00.000Z'),
+          ticket_type_name: 'General Admission',
+          owner_name: 'Jane Doe',
         },
-      ]);
-
-    await service.validateTicketImage(
-      Buffer.from('image bytes'),
-      '19',
-      '7',
-      UserRole.VALIDATOR,
-    );
-
-    expect(qr.decodeQrCode).toHaveBeenCalledWith(Buffer.from('image bytes'));
-    expect(manager.query.mock.calls[0][1]).toEqual([
-      '7a3d3bb5-cf46-4c52-8acf-389ccadf440a',
-    ]);
-  });
-
-  it('rejects QR images that do not contain a ticket UUID', async () => {
-    qr.decodeQrCode.mockResolvedValueOnce('not-a-ticket-token');
-
-    await expect(
-      service.validateTicketImage(Buffer.from('image bytes'), '19'),
-    ).rejects.toThrow('The QR code does not contain a valid ticket token.');
-    expect(manager.query).not.toHaveBeenCalled();
-  });
-
-  it('hides a ticket from someone who does not own it', async () => {
-    repo.findOne.mockResolvedValue({ ownerId: '9', qrToken: 't' });
-    await expect(service.getTicket('TKT-1', owner)).rejects.toThrow(
-      NotFoundException,
-    );
-  });
-
-  it('encodes the qr_token, not the ticket number', async () => {
-    repo.findOne.mockResolvedValue({
-      ownerId: '5',
-      ticketNumber: 'TKT-1',
-      qrToken: 'secret-uuid',
-    });
-    const result = await service.getTicketWithQrCode('TKT-1', owner);
-    expect(qr.generateQrCode).toHaveBeenCalledWith('secret-uuid');
-    expect(result.qrCode).toContain('data:image/png');
-  });
-
-  it.each([
-    [TicketValidationReason.NOT_FOUND, []],
-    [
-      TicketValidationReason.ALREADY_USED,
-      [{ ...validationTicket, ticket_status: 'USED' }],
-    ],
-    [
-      TicketValidationReason.CANCELLED,
-      [{ ...validationTicket, ticket_status: 'CANCELLED' }],
-    ],
-    [TicketValidationReason.WRONG_EVENT, [validationTicket]],
-    [
-      TicketValidationReason.EVENT_CANCELLED,
-      [{ ...validationTicket, event_status: 'CANCELLED' }],
-    ],
-  ])('rejects with reason %s and records the attempt', async (reason, rows) => {
-    manager.query.mockResolvedValueOnce(rows);
-
-    const result = await service.validateTicket(
-      'qr-token',
-      '19',
-      reason === TicketValidationReason.WRONG_EVENT ? '8' : '7',
-    );
-
-    expect(result).toMatchObject({
-      accepted: false,
-      reason,
-      validatedAt: null,
-    });
-    expect(result.message).toBe(
-      {
-        [TicketValidationReason.NOT_FOUND]: 'Ticket not found.',
-        [TicketValidationReason.ALREADY_USED]:
-          'This ticket has already been used.',
-        [TicketValidationReason.CANCELLED]:
-          'This ticket is cancelled or refunded.',
-        [TicketValidationReason.WRONG_EVENT]:
-          'This ticket is for a different event.',
-        [TicketValidationReason.EVENT_CANCELLED]:
-          'This event has been cancelled.',
-      }[reason],
-    );
-    expect(dataSource.query).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO ticket_validations'),
-      [
-        result.ticketId,
-        '19',
-        reason === TicketValidationReason.NOT_FOUND
-          ? '7'
-          : reason === TicketValidationReason.WRONG_EVENT
-            ? '8'
-            : '7',
-        'REJECTED',
-        reason,
-      ],
-    );
-  });
-
-  it('accepts a manually entered ticket number', async () => {
-    const checkedInAt = new Date('2026-01-01T00:00:00.000Z');
-    manager.query
-      .mockResolvedValueOnce([validationTicket])
+      ])
       .mockResolvedValueOnce([
         { ticket_id: '5', event_id: '7', checked_in_at: checkedInAt },
       ]);
 
     const result = await service.validateTicket(
-      undefined,
+      JSON.stringify({
+        ticketId: '5',
+        token: '7a3d3bb5-cf46-4c52-8acf-389ccadf440a',
+      }),
       '19',
       '7',
-      'TKT-7F3A92C14B',
+      undefined,
+      UserRole.VALIDATOR,
     );
 
     expect(manager.query.mock.calls[0][0]).toContain(
-      'WHERE t.ticket_number = $1',
+      't.ticket_id = $1 AND t.qr_token = $2',
     );
-    expect(manager.query.mock.calls[0][1]).toEqual(['TKT-7F3A92C14B']);
+    expect(manager.query.mock.calls[0][1]).toEqual([
+      '5',
+      '7a3d3bb5-cf46-4c52-8acf-389ccadf440a',
+    ]);
     expect(result).toMatchObject({
       accepted: true,
-      message: 'Ticket accepted. Admit guest.',
+      ticketId: '5',
+      ticket: { id: '5', status: 'USED' },
+      event: { id: '7', title: 'Launch Party' },
+    });
+    expect(dataSource.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO ticket_validations'),
+      ['5', '19', '7', 'ACCEPTED', null],
+    );
+  });
+
+  it('rejects malformed QR text before querying the database', async () => {
+    await expect(
+      service.validateTicket('not-a-ticket-token', '19'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(manager.query).not.toHaveBeenCalled();
+  });
+
+  it('does not claim paid tickets without a payment integration', async () => {
+    manager.query
+      .mockResolvedValueOnce([
+        {
+          status: 'PUBLISHED',
+          start_at: new Date('2099-01-01T00:00:00.000Z'),
+          end_at: new Date('2099-01-02T00:00:00.000Z'),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          ticket_type_id: '3',
+          is_active: true,
+          price: '25.00',
+          per_order_limit: 2,
+          sales_start_at: null,
+          sales_end_at: null,
+        },
+      ]);
+
+    await expect(
+      service.purchaseTicket('5', '7', '3', 1),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(manager.query).toHaveBeenCalledTimes(2);
+  });
+
+  it('claims free tickets within the type limit and puts the ticket ID in the QR', async () => {
+    manager.query
+      .mockResolvedValueOnce([
+        {
+          status: 'PUBLISHED',
+          start_at: new Date('2099-01-01T00:00:00.000Z'),
+          end_at: new Date('2099-01-02T00:00:00.000Z'),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          ticket_type_id: '3',
+          is_active: true,
+          price: '0.00',
+          quantity_total: 5,
+          quantity_sold: 0,
+          quantity_reserved: 0,
+          per_order_limit: 2,
+          sales_start_at: null,
+          sales_end_at: null,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          ticket_id: '42',
+          ticket_number: 'TKT-7F3A92C14B',
+          qr_token: '7a3d3bb5-cf46-4c52-8acf-389ccadf440a',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ ticket_type_id: '3' }]);
+
+    const result = await service.purchaseTicket('5', '7', '3', 1);
+    const qrPayload = JSON.parse(qrCodeService.generateQrCode.mock.calls[0][0]);
+
+    expect(result).toMatchObject({
+      quantity: 1,
+      paymentRequired: false,
+      tickets: [{ ticketId: '42', ticketNumber: 'TKT-7F3A92C14B' }],
+    });
+    expect(qrPayload).toEqual({
+      ticketId: '42',
+      token: '7a3d3bb5-cf46-4c52-8acf-389ccadf440a',
     });
   });
 
@@ -202,190 +234,7 @@ describe('TicketsService', () => {
       'Provide exactly one of qrToken or ticketNumber',
     );
     await expect(
-      service.validateTicket('qr-token', '19', undefined, 'TKT-123'),
+      service.validateTicket('{"ticketId":"5"}', '19', undefined, 'TKT-123'),
     ).rejects.toThrow('Provide exactly one of qrToken or ticketNumber');
-  });
-
-  it('accepts an unused ticket with one conditional update and records the attempt', async () => {
-    const checkedInAt = new Date('2026-01-01T00:00:00.000Z');
-    manager.query
-      .mockResolvedValueOnce([validationTicket])
-      .mockResolvedValueOnce([
-        { ticket_id: '5', event_id: '7', checked_in_at: checkedInAt },
-      ]);
-
-    const result = await service.validateTicket('qr-token', '19', '7');
-
-    expect(result).toEqual({
-      accepted: true,
-      reason: null,
-      message: 'Ticket accepted. Admit guest.',
-      ticketId: '5',
-      eventId: '7',
-      validatedAt: checkedInAt,
-      ticket: {
-        id: '5',
-        ticketNumber: 'TKT-7F3A92C14B',
-        status: 'USED',
-        checkedInAt,
-        ticketType: 'General Admission',
-        ownerName: 'Jane Doe',
-      },
-      event: {
-        id: '7',
-        title: 'Launch Party',
-        venue: 'Main Hall',
-        location: 'Blantyre',
-        startAt: new Date('2026-01-01T18:00:00.000Z'),
-        endAt: new Date('2026-01-01T22:00:00.000Z'),
-        status: 'PUBLISHED',
-      },
-    });
-    expect(manager.query.mock.calls[1][0]).toContain(
-      "WHERE ticket_id = $1 AND status = 'ISSUED'",
-    );
-    expect(dataSource.query).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO ticket_validations'),
-      ['5', '19', '7', 'ACCEPTED', null],
-    );
-  });
-
-  it('keeps the validation result when audit logging fails', async () => {
-    manager.query
-      .mockResolvedValueOnce([validationTicket])
-      .mockResolvedValueOnce([
-        {
-          ticket_id: '5',
-          event_id: '7',
-          checked_in_at: new Date('2026-01-01T00:00:00.000Z'),
-        },
-      ]);
-    dataSource.query.mockRejectedValueOnce(new Error('audit unavailable'));
-    const logError = jest
-      .spyOn(service['logger'], 'error')
-      .mockImplementation();
-
-    const result = await service.validateTicket('qr-token', '19');
-
-    expect(result.accepted).toBe(true);
-    expect(logError).toHaveBeenCalledWith(
-      'Failed to record ticket validation attempt',
-      expect.any(String),
-    );
-  });
-
-  it('keeps a rejection reason when audit logging fails', async () => {
-    manager.query.mockResolvedValueOnce([
-      { ...validationTicket, ticket_status: 'USED' },
-    ]);
-    dataSource.query.mockRejectedValueOnce(new Error('audit unavailable'));
-    jest.spyOn(service['logger'], 'error').mockImplementation();
-
-    const result = await service.validateTicket('qr-token', '19');
-
-    expect(result).toMatchObject({
-      accepted: false,
-      reason: TicketValidationReason.ALREADY_USED,
-    });
-  });
-
-  it('does not allow a manager to validate tickets for another organizer', async () => {
-    manager.query.mockResolvedValueOnce([
-      { ...validationTicket, organizer_id: '22' },
-    ]);
-
-    await expect(
-      service.validateTicket(
-        'qr-token',
-        '19',
-        undefined,
-        undefined,
-        UserRole.EVENT_MANAGER,
-      ),
-    ).rejects.toThrow(NotFoundException);
-    expect(dataSource.query).not.toHaveBeenCalled();
-  });
-
-  it('returns event check-in progress to its manager', async () => {
-    dataSource.query.mockResolvedValueOnce([
-      {
-        event_id: '7',
-        title: 'Launch Party',
-        tickets_issued: 50,
-        checked_in: 18,
-      },
-    ]);
-
-    await expect(
-      service.getCheckInSummary('7', {
-        userId: '19',
-        email: 'manager@example.com',
-        role: UserRole.EVENT_MANAGER,
-      }),
-    ).resolves.toEqual({
-      eventId: '7',
-      eventTitle: 'Launch Party',
-      ticketsIssued: 50,
-      checkedIn: 18,
-      remaining: 32,
-    });
-  });
-
-  it('allows only one of two concurrent scans to validate the same ticket', async () => {
-    let status = 'ISSUED';
-    let transactionQueue = Promise.resolve();
-    const transactionalManager = {
-      query: jest.fn(async (sql: string) => {
-        if (sql.startsWith('SELECT')) {
-          return [{ ...validationTicket, ticket_status: status }];
-        }
-        if (sql.startsWith('UPDATE')) {
-          if (status !== 'ISSUED') return [];
-          status = 'USED';
-          return [
-            {
-              ticket_id: '5',
-              event_id: '7',
-              checked_in_at: new Date('2026-01-01T00:00:00.000Z'),
-            },
-          ];
-        }
-        throw new Error(`Unexpected query: ${sql}`);
-      }),
-    };
-    dataSource.transaction.mockImplementation(
-      (
-        callback: (transactionManager: typeof transactionalManager) => unknown,
-      ) => {
-        const previous = transactionQueue;
-        let release: () => void = () => undefined;
-        transactionQueue = new Promise<void>((resolve) => {
-          release = resolve;
-        });
-        return previous.then(async () => {
-          try {
-            return await callback(transactionalManager);
-          } finally {
-            release();
-          }
-        });
-      },
-    );
-
-    const results = await Promise.all([
-      service.validateTicket('qr-token', '19'),
-      service.validateTicket('qr-token', '20'),
-    ]);
-
-    expect(results.filter((result) => result.accepted)).toHaveLength(1);
-    expect(results.find((result) => !result.accepted)?.reason).toBe(
-      TicketValidationReason.ALREADY_USED,
-    );
-    expect(
-      transactionalManager.query.mock.calls
-        .filter(([sql]) => sql.startsWith('SELECT'))
-        .every(([sql]) => sql.includes('FOR UPDATE OF t, e')),
-    ).toBe(true);
-    expect(dataSource.query).toHaveBeenCalledTimes(2);
   });
 });

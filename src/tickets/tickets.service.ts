@@ -29,25 +29,19 @@ interface TicketForValidation {
   event_start_at: Date;
   event_end_at: Date;
   ticket_type_name: string;
-  owner_name: string;
+  owner_name: string | null;
 }
 
-interface UpdatedTicket {
-  ticket_id: string;
-  event_id: string;
-  checked_in_at: Date;
-}
-
-interface TicketValidationTicket {
+interface ValidationDetails {
   id: string;
   ticketNumber: string;
   status: string;
   checkedInAt: Date | null;
   ticketType: string;
-  ownerName: string;
+  ownerName: string | null;
 }
 
-interface TicketValidationEvent {
+interface EventValidationDetails {
   id: string;
   title: string;
   venue: string | null;
@@ -65,8 +59,8 @@ export type TicketValidationResult =
       ticketId: string;
       eventId: string;
       validatedAt: Date;
-      ticket: TicketValidationTicket;
-      event: TicketValidationEvent;
+      ticket: ValidationDetails;
+      event: EventValidationDetails;
     }
   | {
       accepted: false;
@@ -75,9 +69,14 @@ export type TicketValidationResult =
       ticketId: string | null;
       eventId: string | null;
       validatedAt: null;
-      ticket: TicketValidationTicket | null;
-      event: TicketValidationEvent | null;
+      ticket: ValidationDetails | null;
+      event: EventValidationDetails | null;
     };
+
+interface QrPayload {
+  ticketId: string;
+  token: string;
+}
 
 @Injectable()
 export class TicketsService {
@@ -90,32 +89,146 @@ export class TicketsService {
     private readonly dataSource: DataSource,
   ) {}
 
-  /** Tickets owned by the logged-in user. */
-  async findMine(user: AuthenticatedUser) {
-    return this.ticketRepository.find({
-      where: { ownerId: user.userId },
-      order: { issuedAt: 'DESC' },
+  async generateTickets(eventId: string, user: AuthenticatedUser) {
+    return this.dataSource.transaction(async (manager) => {
+      const events: {
+        event_id: string;
+        organizer_id: string;
+        status: string;
+        capacity: number;
+        tickets_issued: number;
+      }[] = await manager.query(
+        `SELECT event_id, organizer_id, status, capacity, tickets_issued
+         FROM events WHERE event_id = $1 FOR UPDATE`,
+        [eventId],
+      );
+      const event = events[0];
+      if (
+        !event ||
+        (String(event.organizer_id) !== String(user.userId) &&
+          user.role !== UserRole.ADMIN)
+      ) {
+        throw new NotFoundException('Event not found');
+      }
+      if (event.status === 'CANCELLED' || event.status === 'COMPLETED') {
+        throw new ConflictException(
+          `Cannot generate tickets for a ${event.status} event`,
+        );
+      }
+
+      const types: {
+        ticket_type_id: string;
+        type_name: string;
+        quantity_total: number;
+      }[] = await manager.query(
+        `SELECT ticket_type_id, type_name, quantity_total
+         FROM ticket_types
+         WHERE event_id = $1 AND is_active = TRUE
+         ORDER BY ticket_type_id
+         FOR UPDATE`,
+        [eventId],
+      );
+      if (types.length === 0) {
+        throw new ConflictException(
+          'Create at least one active ticket type before generating tickets',
+        );
+      }
+
+      const counts: { ticket_type_id: string; n: number }[] =
+        await manager.query(
+          `SELECT ticket_type_id, COUNT(*)::int AS n
+           FROM tickets WHERE event_id = $1
+           GROUP BY ticket_type_id`,
+          [eventId],
+        );
+      const existing = new Map(
+        counts.map((count) => [String(count.ticket_type_id), count.n]),
+      );
+      const plan = types.map((type) => {
+        const alreadyCreated = existing.get(String(type.ticket_type_id)) ?? 0;
+        return {
+          ticketTypeId: type.ticket_type_id,
+          typeName: type.type_name,
+          toCreate: Math.max(0, type.quantity_total - alreadyCreated),
+          totalAfter: Math.max(alreadyCreated, type.quantity_total),
+        };
+      });
+      const totalNew = plan.reduce((total, item) => total + item.toCreate, 0);
+
+      if (event.tickets_issued + totalNew > event.capacity) {
+        throw new ConflictException(
+          `Generating ${totalNew} more tickets would exceed event capacity ` +
+            `(${event.tickets_issued} already issued, capacity ${event.capacity})`,
+        );
+      }
+
+      for (const item of plan) {
+        if (item.toCreate === 0) continue;
+
+        const numbers: string[] = [];
+        const tokens: string[] = [];
+        for (let index = 0; index < item.toCreate; index += 1) {
+          numbers.push(`TKT-${randomBytes(5).toString('hex').toUpperCase()}`);
+          tokens.push(randomUUID());
+        }
+
+        await manager.query(
+          `INSERT INTO tickets (ticket_number, event_id, ticket_type_id, qr_token)
+           SELECT ticket.ticket_number, $3::bigint, $4::bigint, ticket.qr_token
+           FROM unnest($1::text[], $2::uuid[]) AS ticket(ticket_number, qr_token)`,
+          [numbers, tokens, eventId, item.ticketTypeId],
+        );
+      }
+
+      if (totalNew > 0) {
+        await manager.query(
+          `UPDATE events
+           SET tickets_issued = tickets_issued + $1,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE event_id = $2`,
+          [totalNew, eventId],
+        );
+      }
+
+      return {
+        eventId,
+        capacity: event.capacity,
+        ticketsIssued: event.tickets_issued + totalNew,
+        newlyCreated: totalNew,
+        ticketTypes: plan.map((item) => ({
+          ticketTypeId: item.ticketTypeId,
+          typeName: item.typeName,
+          created: item.toCreate,
+          total: item.totalAfter,
+        })),
+      };
     });
   }
 
-  /** One ticket, visible to its owner or an admin. Others get a 404. */
+  async findByEvent(eventId: string, user: AuthenticatedUser) {
+    await this.assertCanManageEvent(eventId, user, 'Event not found');
+    return this.ticketRepository.find({
+      where: { eventId },
+      order: { id: 'ASC' },
+    });
+  }
+
   async getTicket(ticketNumber: string, user: AuthenticatedUser) {
     const ticket = await this.ticketRepository.findOne({
       where: { ticketNumber },
     });
-    if (
-      !ticket ||
-      (ticket.ownerId !== user.userId && user.role !== UserRole.ADMIN)
-    ) {
+    if (!ticket) {
       throw new NotFoundException('Ticket not found');
     }
+    await this.assertCanManageEvent(ticket.eventId, user, 'Ticket not found');
     return ticket;
   }
 
-  /** Ticket plus a QR code (PNG data URL) that encodes the secret qr_token. */
   async getTicketWithQrCode(ticketNumber: string, user: AuthenticatedUser) {
     const ticket = await this.getTicket(ticketNumber, user);
-    const qrCode = await this.qrCodeService.generateQrCode(ticket.qrToken);
+    const qrCode = await this.qrCodeService.generateQrCode(
+      this.createQrPayload(ticket.id, ticket.qrToken),
+    );
     return { ticket, qrCode };
   }
 
@@ -125,19 +238,9 @@ export class TicketsService {
     attemptedEventId?: string,
     validatorRole?: UserRole,
   ): Promise<TicketValidationResult> {
-    const qrToken = await this.qrCodeService.decodeQrCode(image);
-    if (
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-        qrToken,
-      )
-    ) {
-      throw new BadRequestException(
-        'The QR code does not contain a valid ticket token.',
-      );
-    }
-
+    const qrPayload = await this.qrCodeService.decodeQrCode(image);
     return this.validateTicket(
-      qrToken,
+      qrPayload,
       validatorId,
       attemptedEventId,
       undefined,
@@ -158,13 +261,20 @@ export class TicketsService {
       );
     }
 
-    const lookupValue = qrToken || ticketNumber;
-    if (!lookupValue) {
+    let lookup: { where: string; parameters: string[] };
+    if (qrToken) {
+      lookup = this.buildQrLookup(qrToken);
+    } else if (ticketNumber) {
+      lookup = {
+        where: 't.ticket_number = $1',
+        parameters: [ticketNumber],
+      };
+    } else {
       throw new BadRequestException(
         'Provide exactly one of qrToken or ticketNumber',
       );
     }
-    const lookupColumn = qrToken ? 't.qr_token' : 't.ticket_number';
+
     const result = await this.dataSource.transaction(async (manager) => {
       const tickets: TicketForValidation[] = await manager.query(
         `SELECT t.ticket_id, t.ticket_number, t.event_id,
@@ -177,19 +287,18 @@ export class TicketsService {
          FROM tickets t
          JOIN events e ON e.event_id = t.event_id
          JOIN ticket_types tt ON tt.ticket_type_id = t.ticket_type_id
-         JOIN users u ON u.user_id = t.owner_id
-         WHERE ${lookupColumn} = $1
+         LEFT JOIN users u ON u.user_id = t.customer_id
+         WHERE ${lookup.where}
          FOR UPDATE OF t, e`,
-        [lookupValue],
+        lookup.parameters,
       );
-
       const ticket = tickets[0];
       if (!ticket) {
         return this.rejected(TicketValidationReason.NOT_FOUND);
       }
       if (
         validatorRole === UserRole.EVENT_MANAGER &&
-        ticket.organizer_id !== validatorId
+        String(ticket.organizer_id) !== String(validatorId)
       ) {
         throw new NotFoundException('Ticket not found');
       }
@@ -209,7 +318,11 @@ export class TicketsService {
         return this.rejected(TicketValidationReason.WRONG_EVENT, ticket);
       }
 
-      const updatedTickets: UpdatedTicket[] = await manager.query(
+      const updatedTickets: {
+        ticket_id: string;
+        event_id: string;
+        checked_in_at: Date;
+      }[] = await manager.query(
         `UPDATE tickets
          SET status = 'USED', checked_in_at = CURRENT_TIMESTAMP
          WHERE ticket_id = $1 AND status = 'ISSUED'
@@ -218,10 +331,7 @@ export class TicketsService {
       );
       const updated = updatedTickets[0];
       if (!updated) {
-        return this.rejected(TicketValidationReason.ALREADY_USED, {
-          ...ticket,
-          ticket_status: 'USED',
-        });
+        return this.rejected(TicketValidationReason.ALREADY_USED, ticket);
       }
 
       return {
@@ -231,7 +341,11 @@ export class TicketsService {
         ticketId: updated.ticket_id,
         eventId: updated.event_id,
         validatedAt: updated.checked_in_at,
-        ticket: this.toValidationTicket(ticket, 'USED', updated.checked_in_at),
+        ticket: this.toValidationTicket(
+          ticket,
+          'USED',
+          updated.checked_in_at,
+        ),
         event: this.toValidationEvent(ticket),
       };
     });
@@ -266,6 +380,7 @@ export class TicketsService {
        FROM events e
        LEFT JOIN tickets t
          ON t.event_id = e.event_id
+        AND (t.customer_id IS NOT NULL OR t.status = 'USED')
         AND t.status IN ('ISSUED', 'USED')
        WHERE e.event_id = $1
          AND ($2 = 'ADMIN' OR e.organizer_id = $3)
@@ -273,15 +388,249 @@ export class TicketsService {
       [eventId, user.role, user.userId],
     );
     const summary = rows[0];
-    if (!summary) throw new NotFoundException('Event not found');
+    if (!summary) {
+      throw new NotFoundException('Event not found');
+    }
 
     return {
-      eventId: summary.event_id,
+      eventId: String(summary.event_id),
       eventTitle: summary.title,
-      ticketsIssued: summary.tickets_issued,
-      checkedIn: summary.checked_in,
-      remaining: summary.tickets_issued - summary.checked_in,
+      ticketsIssued: Number(summary.tickets_issued),
+      checkedIn: Number(summary.checked_in),
+      remaining:
+        Number(summary.tickets_issued) - Number(summary.checked_in),
     };
+  }
+
+  async purchaseTicket(
+    userId: string,
+    eventId: string,
+    ticketTypeId: string,
+    quantity: number,
+  ) {
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      throw new BadRequestException('quantity must be a positive integer');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const events: {
+        status: string;
+        start_at: Date;
+        end_at: Date;
+      }[] = await manager.query(
+        `SELECT status, start_at, end_at
+         FROM events WHERE event_id = $1 FOR SHARE`,
+        [eventId],
+      );
+      const event = events[0];
+      if (!event) {
+        throw new NotFoundException('Event not found');
+      }
+      if (
+        event.status !== 'PUBLISHED' ||
+        new Date(event.start_at) <= new Date() ||
+        new Date(event.end_at) <= new Date()
+      ) {
+        throw new ConflictException('Tickets are not on sale');
+      }
+
+      const types: {
+        ticket_type_id: string;
+        is_active: boolean;
+        price: string | number;
+        quantity_total: number;
+        quantity_sold: number;
+        quantity_reserved: number;
+        per_order_limit: number;
+        sales_start_at: Date | null;
+        sales_end_at: Date | null;
+      }[] = await manager.query(
+        `SELECT ticket_type_id, is_active, price, quantity_total,
+                quantity_sold, quantity_reserved, per_order_limit,
+                sales_start_at, sales_end_at
+         FROM ticket_types
+         WHERE ticket_type_id = $1 AND event_id = $2
+         FOR UPDATE`,
+        [ticketTypeId, eventId],
+      );
+      const ticketType = types[0];
+      if (!ticketType || !ticketType.is_active) {
+        throw new NotFoundException('Ticket type unavailable');
+      }
+      if (Number(ticketType.price) > 0) {
+        throw new ConflictException(
+          'Paid checkout is not available yet. Only free tickets can be claimed.',
+        );
+      }
+      if (quantity > ticketType.per_order_limit) {
+        throw new BadRequestException(
+          `You can claim at most ${ticketType.per_order_limit} ticket(s) per order`,
+        );
+      }
+      const remaining =
+        ticketType.quantity_total -
+        ticketType.quantity_sold -
+        ticketType.quantity_reserved;
+      if (quantity > remaining) {
+        throw new ConflictException(
+          `Only ${Math.max(remaining, 0)} ticket(s) remain for this ticket type`,
+        );
+      }
+
+      const now = new Date();
+      if (
+        (ticketType.sales_start_at &&
+          now < new Date(ticketType.sales_start_at)) ||
+        (ticketType.sales_end_at &&
+          now > new Date(ticketType.sales_end_at))
+      ) {
+        throw new ConflictException('Ticket sales are not open');
+      }
+
+      const tickets: {
+        ticket_id: string;
+        ticket_number: string;
+        qr_token: string;
+      }[] = await manager.query(
+        `SELECT ticket_id, ticket_number, qr_token
+         FROM tickets
+         WHERE event_id = $1 AND ticket_type_id = $2
+           AND customer_id IS NULL AND status = 'ISSUED'
+         ORDER BY ticket_id
+         LIMIT $3
+         FOR UPDATE SKIP LOCKED`,
+        [eventId, ticketTypeId, quantity],
+      );
+      if (tickets.length < quantity) {
+        throw new ConflictException(
+          `Only ${tickets.length} ticket(s) remain for this ticket type`,
+        );
+      }
+
+      const ids = tickets.map((ticket) => ticket.ticket_id);
+      await manager.query(
+        `UPDATE tickets SET customer_id = $1
+         WHERE ticket_id = ANY($2::bigint[])`,
+        [userId, ids],
+      );
+      const updatedTypes: { ticket_type_id: string }[] = await manager.query(
+        `UPDATE ticket_types
+         SET quantity_sold = quantity_sold + $1
+         WHERE ticket_type_id = $2
+           AND quantity_total - quantity_sold - quantity_reserved >= $1
+         RETURNING ticket_type_id`,
+        [quantity, ticketTypeId],
+      );
+      if (updatedTypes.length === 0) {
+        throw new ConflictException('Ticket type inventory has changed');
+      }
+
+      return {
+        eventId,
+        ticketTypeId,
+        quantity,
+        paymentRequired: false,
+        tickets: await Promise.all(
+          tickets.map(async (ticket) => ({
+            ticketId: String(ticket.ticket_id),
+            ticketNumber: ticket.ticket_number,
+            status: 'ISSUED',
+            qrCodeDataUrl: await this.qrCodeService.generateQrCode(
+              this.createQrPayload(ticket.ticket_id, ticket.qr_token),
+            ),
+          })),
+        ),
+      };
+    });
+  }
+
+  async getCustomerBuyingHistory(userId: string) {
+    const rows: {
+      ticket_id: string;
+      ticket_number: string;
+      status: string;
+      issued_at: Date;
+      qr_token: string;
+      event_title: string;
+      start_at: Date;
+      type_name: string;
+      price: string | number;
+      currency: string;
+    }[] = await this.dataSource.query(
+      `SELECT t.ticket_id, t.ticket_number, t.status, t.issued_at, t.qr_token,
+              e.title AS event_title, e.start_at, tt.type_name, tt.price, tt.currency
+       FROM tickets t
+       JOIN events e ON t.event_id = e.event_id
+       JOIN ticket_types tt ON t.ticket_type_id = tt.ticket_type_id
+       WHERE t.customer_id = $1
+       ORDER BY t.issued_at DESC`,
+      [userId],
+    );
+    return Promise.all(
+      rows.map(async (ticket) => ({
+        ticketId: String(ticket.ticket_id),
+        ticketNumber: ticket.ticket_number,
+        status: ticket.status,
+        issuedAt: ticket.issued_at,
+        eventTitle: ticket.event_title,
+        eventStartsAt: ticket.start_at,
+        ticketType: ticket.type_name,
+        price: Number(ticket.price),
+        currency: ticket.currency.trim(),
+        qrCodeDataUrl: await this.qrCodeService.generateQrCode(
+          this.createQrPayload(ticket.ticket_id, ticket.qr_token),
+        ),
+      })),
+    );
+  }
+
+  private buildQrLookup(qrPayload: string): {
+    where: string;
+    parameters: string[];
+  } {
+    let payload: QrPayload;
+    try {
+      const parsed: unknown = JSON.parse(qrPayload);
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        !('ticketId' in parsed) ||
+        !('token' in parsed) ||
+        typeof parsed.ticketId !== 'string' ||
+        typeof parsed.token !== 'string' ||
+        !/^[1-9]\d{0,17}$/.test(parsed.ticketId) ||
+        !this.isUuid(parsed.token)
+      ) {
+        throw new Error('Invalid QR payload');
+      }
+      payload = { ticketId: parsed.ticketId, token: parsed.token };
+    } catch (error) {
+      if (this.isUuid(qrPayload)) {
+        return {
+          where: 't.qr_token = $1',
+          parameters: [qrPayload],
+        };
+      }
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException('The QR code does not contain a valid ticket');
+    }
+
+    return {
+      where: 't.ticket_id = $1 AND t.qr_token = $2',
+      parameters: [payload.ticketId, payload.token],
+    };
+  }
+
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
+  }
+
+  private createQrPayload(ticketId: string, token: string): string {
+    return JSON.stringify({ ticketId: String(ticketId), token });
   }
 
   private rejected(
@@ -299,6 +648,7 @@ export class TicketsService {
       [TicketValidationReason.EVENT_CANCELLED]:
         'This event has been cancelled.',
     };
+
     return {
       accepted: false,
       reason,
@@ -315,7 +665,7 @@ export class TicketsService {
     ticket: TicketForValidation,
     status = ticket.ticket_status,
     checkedInAt = ticket.checked_in_at,
-  ): TicketValidationTicket {
+  ): ValidationDetails {
     return {
       id: ticket.ticket_id,
       ticketNumber: ticket.ticket_number,
@@ -328,7 +678,7 @@ export class TicketsService {
 
   private toValidationEvent(
     ticket: TicketForValidation,
-  ): TicketValidationEvent {
+  ): EventValidationDetails {
     return {
       id: ticket.event_id,
       title: ticket.event_title,
@@ -366,90 +716,22 @@ export class TicketsService {
     }
   }
 
-  /**
-   * Temporary payment step: PENDING -> PAID, stock moves from reserved to sold,
-   * and one ticket row is issued per purchased seat. All in one transaction.
-   */
-  async payOrder(orderId: number) {
-    return this.dataSource.transaction(async (m) => {
-      const orders = await m.query(
-        `SELECT order_id, buyer_id, status, expires_at
-         FROM orders WHERE order_id = $1 FOR UPDATE`,
-        [orderId],
-      );
-      if (orders.length === 0) throw new NotFoundException('Order not found');
-
-      const order = orders[0];
-      if (order.status !== 'PENDING') {
-        throw new ConflictException(
-          `Order is ${order.status}; only PENDING orders can be paid`,
-        );
-      }
-      if (order.expires_at && new Date(order.expires_at) < new Date()) {
-        throw new ConflictException('Order has expired');
-      }
-
-      const items = await m.query(
-        `SELECT oi.order_item_id, oi.ticket_type_id, oi.quantity, tt.event_id
-         FROM order_items oi
-         JOIN ticket_types tt ON tt.ticket_type_id = oi.ticket_type_id
-         WHERE oi.order_id = $1`,
-        [orderId],
-      );
-
-      const issued: { ticket_id: string; ticket_number: string }[] = [];
-
-      for (const item of items) {
-        const [moved] = await m.query(
-          `UPDATE ticket_types
-           SET quantity_reserved = quantity_reserved - $1,
-               quantity_sold = quantity_sold + $1
-           WHERE ticket_type_id = $2 AND quantity_reserved >= $1
-           RETURNING ticket_type_id`,
-          [item.quantity, item.ticket_type_id],
-        );
-        if (moved.length === 0) {
-          throw new ConflictException(
-            'Reserved stock is missing for this order',
-          );
-        }
-
-        for (let i = 0; i < item.quantity; i++) {
-          const ticketNumber = `TKT-${randomBytes(5).toString('hex').toUpperCase()}`;
-          const rows = await m.query(
-            `INSERT INTO tickets
-               (ticket_number, order_item_id, event_id, ticket_type_id, owner_id, qr_token)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING ticket_id, ticket_number`,
-            [
-              ticketNumber,
-              item.order_item_id,
-              item.event_id,
-              item.ticket_type_id,
-              order.buyer_id,
-              randomUUID(),
-            ],
-          );
-          issued.push(rows[0]);
-        }
-      }
-
-      await m.query(
-        `UPDATE orders
-         SET status = 'PAID', paid_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-         WHERE order_id = $1`,
-        [orderId],
-      );
-
-      return {
-        message: 'Order paid and tickets issued.',
-        orderId,
-        status: 'PAID',
-        tickets: issued.map((t) => ({
-          ticketId: t.ticket_id,
-          ticketNumber: t.ticket_number,
-        })),
-      };
-    });
+  private async assertCanManageEvent(
+    eventId: string,
+    user: AuthenticatedUser,
+    notFoundMessage: string,
+  ): Promise<void> {
+    const rows: { organizer_id: string }[] = await this.dataSource.query(
+      `SELECT organizer_id FROM events WHERE event_id = $1`,
+      [eventId],
+    );
+    const event = rows[0];
+    if (
+      !event ||
+      (String(event.organizer_id) !== String(user.userId) &&
+        user.role !== UserRole.ADMIN)
+    ) {
+      throw new NotFoundException(notFoundMessage);
+    }
   }
 }

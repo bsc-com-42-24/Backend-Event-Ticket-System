@@ -1,39 +1,24 @@
-# Authentication and authorization
+# Authentication and roles
 
-## Endpoints
+## Sign up and sign in
 
-### `POST /auth/register`
+`POST /auth/register` creates an `ATTENDEE` account. Send `name`, `email`, and
+`password`; do not send a privileged role. Passwords must be at least eight
+characters and fit bcrypt's 72-byte limit. Duplicate email addresses return
+`409 Conflict`.
 
-Registers an attendee and returns a bearer access token. The request body
-contains `name`, `email`, and `password`, and may include `role`. Names and
-emails are trimmed, emails are stored lowercase, and passwords are hashed with
-bcrypt before persistence. Email addresses are unique. Registration defaults
-to `ATTENDEE` and may explicitly request `ATTENDEE` or `ORGANIZER`;
-`CHECK_IN_STAFF` and `ADMIN` cannot be self-assigned.
+Only an administrator can promote a user to `ORGANIZER`, `CHECK_IN_STAFF`, or
+`ADMIN` using `PATCH /users/{userId}/role`.
 
-Passwords must contain at least 8 characters and must fit within bcrypt's
-72-byte input limit. Duplicate email addresses return `409 Conflict`; invalid
-input returns `400 Bad Request`.
-
-### `POST /auth/login`
-
-Accepts `email` and `password`. Valid credentials return a bearer access token.
-Missing users and incorrect passwords both return the same `401 Unauthorized`
-response.
-
-### `GET /auth/me`
-
-Requires `Authorization: Bearer <access-token>` and returns the authenticated
-user's ID, email, and role. Missing, invalid, or expired tokens are rejected.
-
-Successful registration and login responses have this shape:
+`POST /auth/login` accepts `email` and `password`. A successful response
+contains:
 
 ```json
 {
   "accessToken": "<signed-jwt>",
   "tokenType": "Bearer",
   "user": {
-    "id": "<user-id>",
+    "id": "123",
     "name": "Attendee",
     "email": "attendee@example.com",
     "role": "ATTENDEE"
@@ -41,41 +26,36 @@ Successful registration and login responses have this shape:
 }
 ```
 
-## Roles and protected routes
+Send the token on protected routes:
 
-The supported role values are `ATTENDEE`, `ORGANIZER`, `CHECK_IN_STAFF`, and
-`ADMIN`. Roles are persisted on the user record and included in the signed JWT.
-Use `JwtAuthGuard` to require a valid login and `RolesGuard` with the `@Roles(...)`
-decorator to restrict an authenticated route to specific roles. Apply both
-guards to role-restricted routes:
-
-```ts
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.EVENT_MANAGER)
+```http
+Authorization: Bearer <accessToken>
 ```
 
-Administrators can list users with `GET /users?page=1&limit=20&email=example`
-and change another user's role with `PATCH /users/{userId}/role`. The email
-filter is a case-insensitive substring match. Administrators cannot change their
-own role. A role change is reflected in newly issued JWTs after that user logs
-in again; existing tokens continue to carry their original role until they
-expire.
+`GET /auth/me` returns the current user's ID, email, and role. Access tokens
+expire after 15 minutes by default. After an administrator changes a role,
+the user must sign in again to receive a token with the new role.
 
-## Ticket validation
+## Roles
 
-`POST /tickets/validate` is available to `CHECK_IN_STAFF` and `ADMIN` users.
-Submit the UUID from the QR code as `qrToken`; optionally include `eventId` so
-the API can reject a ticket presented at the wrong event. The response has an
-`accepted` boolean and a `reason` for rejected scans. Each scan is recorded in
-`ticket_validations`, including attempts for unknown QR tokens. See
-[ticket-validation-role-management.md](./ticket-validation-role-management.md)
-for the rejection reasons and database update instructions.
+| Role | Permissions |
+| --- | --- |
+| `ATTENDEE` | Browse events, claim available free tickets, and view their own ticket history. |
+| `ORGANIZER` | Create/manage owned events and ticket types, generate tickets, and view reports. |
+| `CHECK_IN_STAFF` | Validate ticket QR payloads and manually entered ticket numbers. |
+| `ADMIN` | Manage users and roles, and manage any event or ticket. |
 
-## Configuration and database
+Event ownership is checked in the service as well as by the role guard. An
+organizer cannot access another organizer's private event, ticket IDs, or
+ticket inventory. Check-in staff can validate a ticket but cannot manage
+event settings or list ticket inventory.
 
-Set `JWT_SECRET` to a secret of at least 32 characters and optionally set
-`JWT_EXPIRES_IN` (defaults to `15m`). Initialize the PostgreSQL schema from
-[event_ticket_booking_schema.sql](../event_ticket_booking_schema.sql). For the
-ticket-validation log change, reset the local development database so the
-updated schema is applied; see
-[ticket-validation-role-management.md](./ticket-validation-role-management.md).
+## Password and token settings
+
+Set `JWT_SECRET` to a private random string of at least 32 characters and
+optionally set `JWT_EXPIRES_IN` (default `15m`). Never store the secret in
+frontend code or commit it to source control. Passwords are stored as bcrypt
+hashes; authentication responses do not include the hash.
+
+See [the system flow and API guide](./PROJECT_FLOW_AND_API.md) for all routes,
+request examples, frontend integration, and the paid-checkout limitation.
