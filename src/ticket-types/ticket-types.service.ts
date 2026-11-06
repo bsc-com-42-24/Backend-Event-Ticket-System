@@ -129,14 +129,15 @@ export class TicketTypesService {
       const updated = await client.query(
         `UPDATE ticket_types
          SET type_name = COALESCE($1, type_name),
-             description = CASE WHEN $2 THEN $3 ELSE description END,
-             price = COALESCE($4, price),
-             currency = COALESCE($5, currency),
-             quantity_total = $6,
-             per_order_limit = COALESCE($7, per_order_limit),
-             sales_start_at = CASE WHEN $8 THEN $9 ELSE sales_start_at END,
-             sales_end_at = CASE WHEN $10 THEN $11 ELSE sales_end_at END
-         WHERE ticket_type_id = $12 AND event_id = $13
+         description = CASE WHEN $2 THEN $3 ELSE description END,
+         price = COALESCE($4, price),
+         currency = COALESCE($5, currency),
+         quantity_total = $6,
+         per_order_limit = COALESCE($7, per_order_limit),
+         sales_start_at = CASE WHEN $8 THEN $9 ELSE sales_start_at END,
+         sales_end_at = CASE WHEN $10 THEN $11 ELSE sales_end_at END,
+         is_active = CASE WHEN $12 THEN $13 ELSE is_active END
+         WHERE ticket_type_id = $14 AND event_id = $15
          RETURNING ticket_type_id, event_id, type_name, description, price, currency,
                    quantity_total, quantity_sold, quantity_reserved,
                    (quantity_total - quantity_sold - quantity_reserved) AS remaining,
@@ -153,38 +154,15 @@ export class TicketTypesService {
           dto.salesStartAt ?? null,
           dto.salesEndAt !== undefined,
           dto.salesEndAt ?? null,
+          dto.isActive !== undefined,
+          dto.isActive ?? null,
           ticketTypeId,
           eventId,
         ],
+        
       );
       await client.query('COMMIT');
       return this.toTicketType(updated.rows[0]);
-    } catch (error) {
-      await this.rollback(client);
-      this.throwIfDuplicateTypeName(error);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  async deactivate(eventId: string, ticketTypeId: string, user: AuthenticatedUser) {
-    const client = await this.database.getClient();
-    try {
-      await client.query('BEGIN');
-      await this.lockManagedEvent(client, eventId, user);
-      const type = await this.lockTicketType(client, eventId, ticketTypeId);
-      const result = await client.query(
-        `UPDATE ticket_types SET is_active = FALSE
-         WHERE ticket_type_id = $1 AND event_id = $2
-         RETURNING ticket_type_id, event_id, type_name, description, price, currency,
-                   quantity_total, quantity_sold, quantity_reserved,
-                   (quantity_total - quantity_sold - quantity_reserved) AS remaining,
-                   per_order_limit, sales_start_at, sales_end_at, is_active`,
-        [type.ticket_type_id, eventId],
-      );
-      await client.query('COMMIT');
-      return this.toTicketType(result.rows[0]);
     } catch (error) {
       await this.rollback(client);
       this.throwIfDuplicateTypeName(error);
@@ -198,18 +176,16 @@ export class TicketTypesService {
     const event = await this.getManagedEvent(eventId, user);
     const result = await this.database.query(
       `SELECT tt.ticket_type_id, tt.type_name, tt.currency,
-              tt.quantity_sold AS sold, tt.quantity_reserved AS reserved,
-              (tt.quantity_total - tt.quantity_sold - tt.quantity_reserved) AS remaining,
-              COALESCE(SUM(oi.quantity * oi.unit_price)
-                FILTER (WHERE o.status = 'PAID'), 0) AS revenue
-       FROM ticket_types tt
-       LEFT JOIN order_items oi ON oi.ticket_type_id = tt.ticket_type_id
-       LEFT JOIN orders o ON o.order_id = oi.order_id
-       WHERE tt.event_id = $1
-       GROUP BY tt.ticket_type_id
-       ORDER BY tt.ticket_type_id`,
+          tt.quantity_sold AS sold,
+          tt.quantity_reserved AS reserved,
+          (tt.quantity_total - tt.quantity_sold - tt.quantity_reserved) AS remaining,
+          0::numeric AS revenue
+      FROM ticket_types tt
+      WHERE tt.event_id = $1
+      ORDER BY tt.ticket_type_id`,
       [eventId],
     );
+
     const ticketTypes = result.rows.map((row) => ({
       ticketTypeId: String(row.ticket_type_id),
       name: row.type_name,

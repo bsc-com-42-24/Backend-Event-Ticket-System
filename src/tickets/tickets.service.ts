@@ -350,8 +350,10 @@ export class TicketsService {
   async purchaseTicket(userId: string, eventId: string, ticketTypeId: string) {
     return this.dataSource.transaction(async (m) => {
       const [tt] = await m.query(
-        `SELECT tt.ticket_type_id, tt.is_active, tt.sales_start_at, tt.sales_end_at,
-                e.status AS event_status
+         `SELECT tt.ticket_type_id, tt.is_active,
+        tt.sales_start_at, tt.sales_end_at,
+        tt.quantity_total, tt.quantity_sold, tt.quantity_reserved,
+        e.status AS event_status
          FROM ticket_types tt JOIN events e ON e.event_id = tt.event_id
          WHERE tt.ticket_type_id = $1 AND tt.event_id = $2
          FOR UPDATE OF tt`,
@@ -360,6 +362,17 @@ export class TicketsService {
       if (!tt || !tt.is_active || tt.event_status !== 'PUBLISHED') {
         throw new NotFoundException('Ticket type unavailable');
       }
+      const availableQuantity =
+        Number(tt.quantity_total) -
+        Number(tt.quantity_sold) -
+        Number(tt.quantity_reserved);
+
+      if (availableQuantity < 1) {
+        throw new BadRequestException(
+          'No unreserved tickets are available for this ticket type',
+        );
+      }
+      
       const now = new Date();
       if (
         (tt.sales_start_at && now < tt.sales_start_at) ||
@@ -389,36 +402,108 @@ export class TicketsService {
 
       return {
         ticketNumber: ticket.ticket_number,
-        qrToken: ticket.qr_token,
-        qrCodeDataUrl: await this.qrCodeService.generateQrCode(ticket.qr_token),
+        qrCodeDataUrl: await this.qrCodeService.generateQrCode(
+          ticket.qr_token,
+        ),
         status: 'ISSUED',
       };
     });
   }
-
-  /** A customer's tickets, each with its QR code image. */
+      /** A customer's tickets, including event details and their QR code images. */
   async getCustomerBuyingHistory(userId: string) {
     const rows = await this.dataSource.query(
-      `SELECT t.ticket_id, t.ticket_number, t.status, t.issued_at, t.qr_token,
-              e.title AS event_title, e.start_at, tt.type_name, tt.price, tt.currency
+      `SELECT
+         t.ticket_id,
+         t.ticket_number,
+         t.status AS ticket_status,
+         t.issued_at,
+         t.qr_token,
+
+         e.event_id,
+         e.title AS event_title,
+         e.description AS event_description,
+         e.category AS event_category,
+         e.banner_url AS event_banner_url,
+         e.event_type,
+         e.start_at,
+         e.end_at,
+
+         COALESCE(v.venue_name, e.venue) AS venue_name,
+         v.address AS venue_address,
+         v.city AS venue_city,
+         v.country AS venue_country,
+         e.location AS event_location,
+
+         tt.ticket_type_id,
+         tt.type_name,
+         tt.description AS ticket_type_description,
+         tt.price,
+         tt.currency,
+
+         u.full_name AS organizer_name
+
        FROM tickets t
-       JOIN events e ON t.event_id = e.event_id
-       JOIN ticket_types tt ON t.ticket_type_id = tt.ticket_type_id
+       JOIN events e
+         ON e.event_id = t.event_id
+       JOIN ticket_types tt
+         ON tt.ticket_type_id = t.ticket_type_id
+       LEFT JOIN venues v
+         ON v.venue_id = e.venue_id
+       JOIN users u
+         ON u.user_id = e.organizer_id
+
        WHERE t.customer_id = $1
        ORDER BY t.issued_at DESC`,
       [userId],
     );
+
     return Promise.all(
       rows.map(async (r: any) => {
-        const { qr_token, ...rest } = r;
+        const qrCodeDataUrl =
+          await this.qrCodeService.generateQrCode(r.qr_token);
+
         return {
-          ...rest,
-          qrCodeDataUrl: await this.qrCodeService.generateQrCode(qr_token),
+          ticketId: r.ticket_id,
+          ticketNumber: r.ticket_number,
+          status: r.ticket_status,
+          issuedAt: r.issued_at,
+
+          event: {
+            eventId: r.event_id,
+            title: r.event_title,
+            description: r.event_description,
+            category: r.event_category,
+            bannerUrl: r.event_banner_url,
+            eventType: r.event_type,
+            startAt: r.start_at,
+            endAt: r.end_at,
+          },
+
+          venue: {
+            name: r.venue_name,
+            address: r.venue_address,
+            city: r.venue_city,
+            country: r.venue_country,
+            location: r.event_location,
+          },
+
+          ticketType: {
+            ticketTypeId: r.ticket_type_id,
+            name: r.type_name,
+            description: r.ticket_type_description,
+            price: r.price,
+            currency: r.currency,
+          },
+
+          organizer: {
+            name: r.organizer_name,
+          },
+
+          qrCodeDataUrl,
         };
       }),
     );
   }
-
     /** Scan = validateTicket + the ticket details the staff member needs to see. */
   async scanTicket(
     qrToken: string,

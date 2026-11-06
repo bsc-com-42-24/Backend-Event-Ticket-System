@@ -1,6 +1,11 @@
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
+
 import { User } from '../users/user.entity';
+import { Order } from '../orders/entities/order.entity';
+import { OrderItem } from '../orders/entities/item.entity';
+import { Payment } from '../payments/entities/payment.entity';
+import { Ticket } from '../tickets/entities/ticket.entity';
 
 export default new DataSource({
   type: 'postgres',
@@ -9,8 +14,15 @@ export default new DataSource({
   username: process.env.DB_USERNAME ?? 'postgres',
   password: process.env.DB_PASSWORD ?? 'postgres',
   database: process.env.DB_NAME ?? 'ticket_master',
-  entities: [User],
+  entities: [
+    User,
+    Order,
+    OrderItem,
+    Payment,
+    Ticket,
+  ],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: false,
+  migrationsRun: false,
   uuidExtension: 'pgcrypto',
 });

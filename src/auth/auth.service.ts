@@ -66,6 +66,7 @@ export class AuthService {
     return this.createAuthResponse(user);
   }
 
+
   private async createAuthResponse(user: User): Promise<AuthResponse> {
     const payload: JwtPayload = {
       sub: user.id,
@@ -76,14 +77,9 @@ export class AuthService {
     return {
       accessToken: await this.jwtService.signAsync(payload),
       tokenType: 'Bearer',
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-      },
     };
   }
+  
 
   private isUniqueConstraintViolation(error: unknown): boolean {
     if (!(error instanceof QueryFailedError)) {

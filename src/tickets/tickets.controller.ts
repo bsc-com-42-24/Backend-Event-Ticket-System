@@ -69,14 +69,18 @@ export class TicketsController {
     );
   }
 
-  @Get('history')
+  @Get('mine')
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'My purchased tickets, each with its QR code' })
-  @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
-  @ApiForbiddenResponse({
-    description: 'Only customers and administrators may view history.',
+  @ApiOperation({
+    summary: 'Get my tickets with event details and QR code images',
   })
-  getHistory(@CurrentUser() user: AuthenticatedUser) {
+  @ApiUnauthorizedResponse({
+    description: 'A valid bearer token is required.',
+  })
+  @ApiForbiddenResponse({
+    description: 'Only customers and administrators may view their tickets.',
+  })
+  getMyTickets(@CurrentUser() user: AuthenticatedUser) {
     return this.ticketsService.getCustomerBuyingHistory(user.userId);
   }
 

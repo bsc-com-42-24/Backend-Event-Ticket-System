@@ -58,7 +58,7 @@ export class TicketTypesController {
 
   @Patch('ticket-types/:ticketTypeId')
   @ManagerOrAdmin()
-  @ApiOperation({ summary: 'Edit a ticket type without lowering stock below sold or reserved' })
+  @ApiOperation({ summary: 'Update ticket type details, stock or active status' })
   @ApiParam({ name: 'eventId', example: '12' })
   @ApiParam({ name: 'ticketTypeId', example: '3' })
   update(
@@ -68,19 +68,6 @@ export class TicketTypesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.ticketTypes.update(eventId, ticketTypeId, dto, user);
-  }
-
-  @Post('ticket-types/:ticketTypeId/deactivate')
-  @ManagerOrAdmin()
-  @ApiOperation({ summary: 'Deactivate a ticket type without deleting its history' })
-  @ApiParam({ name: 'eventId', example: '12' })
-  @ApiParam({ name: 'ticketTypeId', example: '3' })
-  deactivate(
-    @Param('eventId', NumericIdPipe) eventId: string,
-    @Param('ticketTypeId', NumericIdPipe) ticketTypeId: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.ticketTypes.deactivate(eventId, ticketTypeId, user);
   }
 
   @Get('sales-summary')

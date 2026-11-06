@@ -12,4 +12,8 @@ export const environmentValidationSchema = Joi.object({
   DB_NAME: Joi.string().default('ticket_master'),
   JWT_SECRET: Joi.string().min(32).required(),
   JWT_EXPIRES_IN: Joi.string().default('15m'),
+  PAYCHANGU_SECRET_KEY: Joi.string().allow('').default(''),
+  PAYCHANGU_WEBHOOK_SECRET: Joi.string().allow('').default(''),
+  PAYCHANGU_CALLBACK_URL: Joi.string().allow('').default(''),
+  PAYCHANGU_RETURN_URL: Joi.string().allow('').default(''),
 });

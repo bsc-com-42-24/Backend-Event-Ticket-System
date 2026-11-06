@@ -4,7 +4,10 @@ import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -12,6 +15,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Ticket Master API')
     .setVersion('1.0')

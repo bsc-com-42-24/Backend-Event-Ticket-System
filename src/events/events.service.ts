@@ -205,18 +205,49 @@ export class EventsService {
 
   // FR-EVENT-06 — row is locked so capacity changes can't race with ticket purchases
   async update(id: string, dto: UpdateEventDto, user: AuthUser) {
-    return this.dataSource.transaction(async (m) => {
-      const event = await this.lockAndGet(m, id);
-      this.assertCanManage(event, user);
+  return this.dataSource.transaction(async (m) => {
+    const event = await this.lockAndGet(m, id);
+    this.assertCanManage(event, user);
 
-      if (event.status === EventStatus.CANCELLED) {
-        throw new ConflictException('Cancelled events cannot be updated');
+    if (event.status === EventStatus.CANCELLED) {
+      throw new ConflictException('Cancelled events cannot be updated');
+    }
+
+    const { status, ...eventChanges } = dto;
+
+    const changes = Object.fromEntries(
+      Object.entries(eventChanges).filter(([, v]) => v !== undefined),
+    );
+
+    // Handle event status changes.
+    if (status !== undefined) {
+      if (status === EventStatus.PUBLISHED) {
+        if (event.status !== EventStatus.DRAFT) {
+          throw new ConflictException(
+            'Only DRAFT events can be published',
+          );
+        }
+
+        if (event.endAt <= new Date()) {
+          throw new BadRequestException(
+            'Cannot publish an event that has already ended',
+          );
+        }
+
+        event.status = EventStatus.PUBLISHED;
+        event.publishedAt = new Date();
+      } else if (status === EventStatus.CANCELLED) {
+        event.status = EventStatus.CANCELLED;
+        event.cancelledAt = new Date();
+      } else {
+        throw new BadRequestException(
+          'Events cannot be moved back to DRAFT',
+        );
       }
+    }
 
-      const changes = Object.fromEntries(
-        Object.entries(dto).filter(([, v]) => v !== undefined),
-      );
-
+    // Validate event details only when details are being updated.
+    if (Object.keys(changes).length > 0) {
       const startAt = dto.startAt ?? event.startAt;
       const endAt = dto.endAt ?? event.endAt;
 
@@ -226,12 +257,14 @@ export class EventsService {
         throw new BadRequestException('startAt must be in the future');
       }
 
-      if (endAt <= new Date()) {
+      if (dto.endAt && endAt <= new Date()) {
         throw new BadRequestException('endAt must be in the future');
       }
 
-      // FR-CAP-06: can never drop capacity below what is already issued
-      if (dto.capacity !== undefined && dto.capacity < event.ticketsIssued) {
+      if (
+        dto.capacity !== undefined &&
+        dto.capacity < event.ticketsIssued
+      ) {
         throw new ConflictException(
           `Capacity cannot be lower than tickets already issued (${event.ticketsIssued})`,
         );
@@ -252,10 +285,11 @@ export class EventsService {
       }
 
       Object.assign(event, changes);
+    }
 
-      return this.toResponse(await m.save(event));
-    });
-  }
+    return this.toResponse(await m.save(event));
+  });
+}
 
   // FR-EVENT-08 — DRAFT -> PUBLISHED
   async publish(id: string, user: AuthUser) {

@@ -120,8 +120,13 @@ describe('TicketsController', () => {
       user,
     );
   });
-it('purchases a ticket for the current user', async () => {
-    const result = { ticketNumber: 'TKT-1', qrToken: 'tok' };
+  
+  it('purchases a ticket for the current user', async () => {
+    const result = {
+      ticketNumber: 'TKT-1',
+      qrCodeDataUrl: 'data:image/png;base64,x',
+      status: 'ISSUED',
+    };
     service.purchaseTicket.mockResolvedValue(result);
 
     await expect(
@@ -133,12 +138,18 @@ it('purchases a ticket for the current user', async () => {
 
     expect(service.purchaseTicket).toHaveBeenCalledWith('5', '7', '3');
   });
-
-  it("returns the current user's buying history", async () => {
-    const result = [{ ticketNumber: 'TKT-1', qrCodeDataUrl: 'data:...' }];
+ 
+  it("returns the current user's tickets", async () => {
+    const result = [
+      {
+        ticketNumber: 'TKT-1',
+        event: { title: 'Tech Conference' },
+        qrCodeDataUrl: 'data:image/png;base64,x',
+      },
+    ];
     service.getCustomerBuyingHistory.mockResolvedValue(result);
 
-    await expect(controller.getHistory(user)).resolves.toEqual(result);
+    await expect(controller.getMyTickets(user)).resolves.toEqual(result);
 
     expect(service.getCustomerBuyingHistory).toHaveBeenCalledWith('5');
   });

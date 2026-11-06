@@ -59,29 +59,44 @@ describe('TicketTypesService', () => {
     );
   });
 
-  it('calculates revenue only from paid order items', async () => {
-    database.query
-      .mockResolvedValueOnce({
-        rows: [{ event_id: '7', organizer_id: '12', capacity: 15 }],
-      })
-      .mockResolvedValueOnce({
-        rows: [{
-          ticket_type_id: '3',
-          type_name: 'Standard',
-          currency: 'MWK',
-          sold: 2,
-          reserved: 1,
-          remaining: 7,
-          revenue: '40',
-        }],
-      });
+  
+it('calculates ticket summary without requiring payment tables', async () => {
+  database.query
+    .mockResolvedValueOnce({
+      rows: [{ event_id: '7', organizer_id: '12', capacity: 15 }],
+    })
+    .mockResolvedValueOnce({
+      rows: [{
+        ticket_type_id: '3',
+        type_name: 'Standard',
+        currency: 'MWK',
+        sold: 2,
+        reserved: 1,
+        remaining: 7,
+        revenue: '0',
+      }],
+    });
 
-    const summary = await service.getSalesSummary('7', owner);
+  const summary = await service.getSalesSummary('7', owner);
 
-    expect(database.query.mock.calls[1][0]).toContain(
-      "FILTER (WHERE o.status = 'PAID')",
-    );
-    expect(summary.ticketTypes[0].revenue).toBe(40);
-    expect(summary.totals.revenueByCurrency).toEqual({ MWK: 40 });
+  expect(database.query.mock.calls[1][0]).not.toContain('orders');
+  expect(database.query.mock.calls[1][0]).not.toContain('order_items');
+
+  expect(summary.ticketTypes[0]).toEqual({
+    ticketTypeId: '3',
+    name: 'Standard',
+    currency: 'MWK',
+    sold: 2,
+    reserved: 1,
+    remaining: 7,
+    revenue: 0,
+  });
+
+  expect(summary.totals).toEqual({
+    sold: 2,
+    reserved: 1,
+    remaining: 7,
+    revenueByCurrency: { MWK: 0 },
+  });
   });
 });

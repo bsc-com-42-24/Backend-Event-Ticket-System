@@ -1,6 +1,5 @@
 import {
-  applyDecorators, Body, Controller, Delete, Get, HttpCode, Param,
-  Patch, Post, Query, UseGuards,
+  applyDecorators, Body, Controller, Get, Param, Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';           // Member 2
@@ -52,7 +51,9 @@ export class EventsController {
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'View event details incl. remaining tickets' })
+  @ApiOperation({
+  summary: 'Update event details or change status (owner/admin)',
+  })
   findOne(@Param('id', NumericIdPipe) id: string, @CurrentUser() user?: AuthUser) {
     return this.events.findOne(id, user);
   }
@@ -68,19 +69,4 @@ export class EventsController {
     return this.events.update(id, dto, user);
   }
 
-  @Post(':id/publish')
-  @HttpCode(200)
-  @ManagerOnly()
-  @ApiOperation({ summary: 'Publish a DRAFT event' })
-  publish(@Param('id', NumericIdPipe) id: string, @CurrentUser() user: AuthUser) {
-    return this.events.publish(id, user);
-  }
-
-  @Delete(':id')
-  @HttpCode(200)
-  @ManagerOnly()
-  @ApiOperation({ summary: 'Cancel an event (status -> CANCELLED)' })
-  cancel(@Param('id', NumericIdPipe) id: string, @CurrentUser() user: AuthUser) {
-    return this.events.cancel(id, user);
-  }
 }
