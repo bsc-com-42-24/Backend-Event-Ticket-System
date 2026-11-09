@@ -56,7 +56,6 @@ export class PaymentsController {
   @ApiOperation({
     summary: 'Verify a PayChangu payment',
   })
-  
   verifyPayment(
     @Param('txRef') txRef: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -70,22 +69,27 @@ export class PaymentsController {
   })
   async webhook(
     @Req() request: RawBodyRequest<Request>,
-    @Headers('signature') signature: string,
+    @Headers('paychangu-signature') signatureHeader: string,
+    @Headers('x-paychangu-signature') backupSignatureHeader: string,
+    @Headers('signature') legacySignature: string,
   ) {
-    const valid =
-      this.paymentsService.verifyWebhookSignature(
-        request.rawBody,
-        signature,
-      );
+    // Fallback order to extract the verification hash string sent by PayChangu
+    const signature = signatureHeader || backupSignatureHeader || legacySignature;
 
-    if (!valid) {
+    if (!signature) {
+      throw new BadRequestException('Missing webhook signature verification header');
+    }
+
+    if (!request.rawBody) {
       throw new BadRequestException(
-        'Invalid webhook signature',
+        'Raw request body is missing. Ensure rawBody parsing is active in main.ts',
       );
     }
 
+    // Pass the raw string body buffer directly to your service for crypto timing verification
     return this.paymentsService.handleWebhook(
-      request.body,
+      request.rawBody.toString('utf8'),
+      signature,
     );
   }
 
@@ -93,9 +97,14 @@ export class PaymentsController {
   @ApiOperation({
     summary: 'PayChangu customer return callback',
   })
-  callback(
+  async callback(
     @Query('tx_ref') txRef: string,
   ) {
-    return this.paymentsService.handleCallback(txRef);
+    if (!txRef) {
+      throw new BadRequestException('Missing transaction reference query parameter');
+    }
+
+    // The callback route acts as a validation trigger for the customer UI thread
+    return this.paymentsService.verifyPayment(txRef);
   }
 }

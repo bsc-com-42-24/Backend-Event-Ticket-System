@@ -20,7 +20,7 @@ import { UserRole } from '../users/user-role.enum';
 
 @Injectable()
 export class PaymentsService {
-  private readonly apiUrl = 'https://api.paychangu.com';
+  private readonly apiUrl = 'https://paychangu.com';
 
   constructor(
     private readonly database: DatabaseService,
@@ -217,8 +217,8 @@ export class PaymentsService {
   }
 
   async verifyPayment(
-  txRef: string,
-  user?: AuthenticatedUser,
+    txRef: string,
+    user?: AuthenticatedUser,
   ) {
     const paymentResult = await this.database.query(
       `
@@ -233,11 +233,10 @@ export class PaymentsService {
       INNER JOIN orders o
         ON o.order_id = p.order_id
       WHERE p.tx_ref = $1
-      
       `,
       [txRef],
     );
-    
+
     if (paymentResult.rows.length === 0) {
       throw new NotFoundException('Payment not found');
     }
@@ -251,13 +250,11 @@ export class PaymentsService {
     ) {
       throw new NotFoundException('Payment not found');
     }
-    // A previously verified successful payment must not be processed again.
-    
+
     if (payment.status === 'SUCCESS') {
-      const fulfillment =
-        await this.ordersService.confirmPaidOrder(
-          String(payment.linked_order_id),
-        );
+      const fulfillment = await this.ordersService.confirmPaidOrder(
+        String(payment.linked_order_id),
+      );
 
       return {
         message: 'Payment has already been verified',
@@ -266,10 +263,6 @@ export class PaymentsService {
         fulfillment,
       };
     }
-    if (!payment) {
-      throw new NotFoundException('Payment not found');
-    }
-    
 
     let response: Response;
 
@@ -344,125 +337,94 @@ export class PaymentsService {
       };
     }
 
-    const expectedAmount = this.toCents(payment.amount);
-    const receivedAmount = this.toCents(data.amount);
+    const expectedCents = this.toCents(payment.amount);
+    const receivedCents = this.toCents(data.amount);
 
     if (
-      !Number.isFinite(expectedAmount) ||
-      !Number.isFinite(receivedAmount) ||
-      receivedAmount !== expectedAmount
+      isNaN(expectedCents) ||
+      isNaN(receivedCents) ||
+      expectedCents !== receivedCents ||
+      String(data.currency).toLowerCase().trim() !== String(payment.currency).toLowerCase().trim()
     ) {
-      throw new BadRequestException(
-        'The verified payment amount does not match the order amount',
+      await this.database.query(
+        `
+        UPDATE payments
+        SET status = 'FAILED',
+            failure_reason = 'Amount or currency mismatch during verification',
+            provider_metadata = $1,
+            updated_at = NOW()
+        WHERE tx_ref = $2
+          AND status <> 'SUCCESS'
+        `,
+        [JSON.stringify(result), txRef],
       );
+      throw new BadRequestException('Payment verification failed: amount/currency mismatch');
     }
 
-    if (
-      String(data.currency).trim().toUpperCase() !==
-      String(payment.currency).trim().toUpperCase()
-    ) {
-      throw new BadRequestException(
-        'The verified payment currency does not match the order currency',
-      );
-    }
-
-    const providerReference =
-      data.reference == null
-        ? null
-        : String(data.reference);
-
-    // Mark the payment successful before attempting fulfilment.
-    // If fulfilment fails, the successful payment remains recorded
-    // and can be reconciled without losing the provider transaction.
     await this.database.query(
       `
       UPDATE payments
       SET status = 'SUCCESS',
-          provider_reference = $1,
-          provider_metadata = $2,
-          verified_at = NOW(),
-          failure_reason = NULL,
+          provider_metadata = $1,
           updated_at = NOW()
-      WHERE tx_ref = $3
-        AND status <> 'SUCCESS'
+      WHERE tx_ref = $2
       `,
-      [
-        providerReference,
-        JSON.stringify(result),
-        txRef,
-      ],
+      [JSON.stringify(result), txRef],
     );
 
-    const fulfillment =
-      await this.ordersService.confirmPaidOrder(
-        String(payment.linked_order_id),
-      );
+    const fulfillment = await this.ordersService.confirmPaidOrder(
+      String(payment.linked_order_id),
+    );
 
     return {
-      message: fulfillment.fulfilled
-        ? 'Payment verified and tickets issued'
-        : 'Payment verified, but the order could not be fulfilled automatically',
+      message: 'Payment verified successfully',
       paymentStatus: 'SUCCESS',
       orderNumber: payment.order_number,
       fulfillment,
     };
   }
-  verifyWebhookSignature(
-  rawBody: Buffer | undefined,
-  signature: string | undefined,
-  ): boolean {
-  const secret = this.config.get<string>(
-    'PAYCHANGU_WEBHOOK_SECRET',
-  );
 
-  if (!secret || !rawBody || !signature) {
-    return false;
-  }
-
-  const expected = createHmac('sha256', secret)
-    .update(rawBody)
-    .digest();
-
-  const suppliedHex = signature
-    .replace(/^sha256=/i, '')
-    .trim();
-
-  if (!/^[a-f0-9]{64}$/i.test(suppliedHex)) {
-    return false;
-  }
-
-  const supplied = Buffer.from(suppliedHex, 'hex');
-
-  if (supplied.length !== expected.length) {
-    return false;
-  }
-
-  return timingSafeEqual(expected, supplied);
-  }
-
-  async handleWebhook(payload: any) {
-    const txRef =
-      payload?.tx_ref ??
-      payload?.data?.tx_ref;
-
-    if (!txRef || typeof txRef !== 'string') {
-      throw new BadRequestException(
-        'Webhook does not contain a transaction reference',
-      );
+  async handleWebhook(rawBody: string, signature: string) {
+    const webhookSecret = this.config.get<string>('PAYCHANGU_WEBHOOK_SECRET');
+    if (!webhookSecret) {
+      throw new ServiceUnavailableException('Webhook validation is not configured');
     }
 
-    // Do not trust the webhook's status by itself.
-    // Always ask PayChangu to verify the transaction.
-    return this.verifyPayment(txRef);
-  }
+    const computedSignature = createHmac('sha256', webhookSecret)
+      .update(rawBody)
+      .digest('hex');
 
-  async handleCallback(txRef: string) {
+    const signatureBuffer = Buffer.from(signature, 'utf8');
+    const computedBuffer = Buffer.from(computedSignature, 'utf8');
+
+    if (
+      signatureBuffer.length !== computedBuffer.length ||
+      !timingSafeEqual(signatureBuffer, computedBuffer)
+    ) {
+      throw new ForbiddenException('Invalid webhook signature');
+    }
+
+    let payload: any;
+
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      throw new BadRequestException('Invalid webhook payload');
+    }
+
+    const txRef = payload?.tx_ref ?? payload?.data?.tx_ref;
+
     if (!txRef) {
-      throw new BadRequestException(
-        'Transaction reference is required',
-      );
+      throw new BadRequestException('Webhook is missing tx_ref');
     }
 
-    return this.verifyPayment(txRef);
+    // Don't trust the webhook body for status or amount.
+    // Re-verify directly with PayChangu and fulfill the order.
+    const result = await this.verifyPayment(String(txRef));
+
+    return {
+      message: 'Webhook processed',
+      paymentStatus: result.paymentStatus,
+    };
   }
 }
