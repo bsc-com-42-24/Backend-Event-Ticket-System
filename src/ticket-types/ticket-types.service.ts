@@ -22,7 +22,7 @@ export class TicketTypesService {
   async findPublic(eventId: string) {
     const event = await this.database.query(
       `SELECT event_id FROM events
-       WHERE event_id = $1 AND status = 'PUBLISHED'`,
+       WHERE event_id = $1 AND status IN ('PUBLISHED', 'CANCELLED', 'COMPLETED')`,
       [eventId],
     );
     if (!event.rows.length) throw new NotFoundException('Published event not found');
@@ -179,7 +179,7 @@ export class TicketTypesService {
           tt.quantity_sold AS sold,
           tt.quantity_reserved AS reserved,
           (tt.quantity_total - tt.quantity_sold - tt.quantity_reserved) AS remaining,
-          0::numeric AS revenue
+          (tt.quantity_sold * tt.price) AS revenue
       FROM ticket_types tt
       WHERE tt.event_id = $1
       ORDER BY tt.ticket_type_id`,

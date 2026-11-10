@@ -77,16 +77,23 @@ describe('TicketsController', () => {
       eventId: '7',
     };
     const result = { accepted: true, reason: null };
+    const staff = {
+      userId: '5',
+      email: 'staff@example.com',
+      role: 'CHECK_IN_STAFF',
+    } as any;
     service.scanTicket.mockResolvedValue(result);
 
     await expect(
-      controller.validateTicket(input as any, user),
+      controller.validateTicket(input as any, staff),
     ).resolves.toEqual(result);
 
+    // The caller's role is forwarded so the service can enforce event assignment.
     expect(service.scanTicket).toHaveBeenCalledWith(
       'secret-qr-token',
       '5',
       '7',
+      'CHECK_IN_STAFF',
     );
   });
 

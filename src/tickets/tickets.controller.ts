@@ -62,10 +62,19 @@ export class TicketsController {
     @Body() body: PurchaseTicketDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    // Only forward the payment reference when the client sent one.
+    if (body.txRef === undefined) {
+      return this.ticketsService.purchaseTicket(
+        user.userId,
+        body.eventId,
+        body.ticketTypeId,
+      );
+    }
     return this.ticketsService.purchaseTicket(
       user.userId,
       body.eventId,
       body.ticketTypeId,
+      body.txRef,
     );
   }
 
@@ -136,7 +145,7 @@ export class TicketsController {
   })
   @ApiOkResponse({
     description:
-      'Returns accepted=true or accepted=false with a specific rejection reason, plus a details object (ticket number, type, event, customer) when the ticket exists.',
+      'Returns accepted=true or accepted=false with a specific rejection reason (including NOT_ASSIGNED when check-in staff scan a ticket of an event they are not assigned to), plus a details object (ticket number, type, event, customer) when the ticket exists and the scanner may see it.',
     type: TicketValidationResponseDto,
   })
   @ApiBadRequestResponse({
@@ -154,6 +163,7 @@ export class TicketsController {
       input.qrToken,
       user.userId,
       input.eventId,
+      user.role,
     );
   }
 

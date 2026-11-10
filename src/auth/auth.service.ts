@@ -62,6 +62,11 @@ export class AuthService {
     if (!user || !passwordMatches) {
       throw new UnauthorizedException('Invalid email or password');
     }
+    // Only reached with the correct password, so this reveals nothing to
+    // someone guessing emails.
+    if (!user.isActive) {
+      throw new UnauthorizedException('This account has been disabled');
+    }
 
     return this.createAuthResponse(user);
   }

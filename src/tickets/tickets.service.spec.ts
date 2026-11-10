@@ -6,6 +6,7 @@ import {
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { UserRole } from '../users/user-role.enum';
 import { Ticket } from './entities/ticket.entity';
 import { TicketValidationReason } from './enums/ticket-validation-reason.enum';
 
@@ -348,6 +349,136 @@ describe('TicketsService', () => {
     });
   });
 
+  describe('validateTicket - event assignment for check-in staff', () => {
+    const staffId = '31';
+
+    it('accepts a ticket for an event the staff member is assigned to', async () => {
+      const checkedInAt = new Date('2026-01-01T00:00:00.000Z');
+      manager.query
+        .mockResolvedValueOnce([validationTicket]) // ticket lookup
+        .mockResolvedValueOnce([{ '?column?': 1 }]) // assignment found
+        .mockResolvedValueOnce([
+          { ticket_id: '5', event_id: '7', checked_in_at: checkedInAt },
+        ]); // conditional update
+
+      const result = await service.validateTicket(
+        'qr-token',
+        staffId,
+        '7',
+        UserRole.VALIDATOR,
+      );
+
+      expect(result).toMatchObject({ accepted: true, eventId: '7' });
+      // assignment is looked up for exactly this staff member and this ticket's event
+      expect(manager.query.mock.calls[1][0]).toContain(
+        'staff_event_assignments',
+      );
+      expect(manager.query.mock.calls[1][1]).toEqual([staffId, '7']);
+    });
+
+    it('rejects a ticket for an event the staff member is NOT assigned to, without marking it used', async () => {
+      manager.query
+        .mockResolvedValueOnce([validationTicket])
+        .mockResolvedValueOnce([]); // no assignment
+
+      const result = await service.validateTicket(
+        'qr-token',
+        staffId,
+        '7',
+        UserRole.VALIDATOR,
+      );
+
+      expect(result).toEqual({
+        accepted: false,
+        reason: TicketValidationReason.NOT_ASSIGNED,
+        // nothing about the ticket is revealed to an unassigned scanner
+        ticketId: null,
+        eventId: null,
+        validatedAt: null,
+      });
+      // lookup + assignment check only: the UPDATE that marks the ticket USED never runs
+      expect(manager.query).toHaveBeenCalledTimes(2);
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO ticket_validations'),
+        [null, staffId, '7', 'REJECTED', TicketValidationReason.NOT_ASSIGNED],
+      );
+    });
+
+    it('does not reveal that a ticket was already used to an unassigned staff member', async () => {
+      manager.query
+        .mockResolvedValueOnce([{ ...validationTicket, ticket_status: 'USED' }])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.validateTicket(
+        'qr-token',
+        staffId,
+        undefined,
+        UserRole.VALIDATOR,
+      );
+
+      expect(result.reason).toBe(TicketValidationReason.NOT_ASSIGNED);
+    });
+
+    it('fails closed: with no role given it enforces the assignment', async () => {
+      manager.query
+        .mockResolvedValueOnce([validationTicket])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.validateTicket('qr-token', staffId, '7');
+
+      expect(result.reason).toBe(TicketValidationReason.NOT_ASSIGNED);
+    });
+
+    it('lets an admin validate any event without an assignment lookup', async () => {
+      manager.query
+        .mockResolvedValueOnce([validationTicket])
+        .mockResolvedValueOnce([
+          {
+            ticket_id: '5',
+            event_id: '7',
+            checked_in_at: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        ]);
+
+      const result = await service.validateTicket(
+        'qr-token',
+        '20',
+        '7',
+        UserRole.ADMIN,
+      );
+
+      expect(result.accepted).toBe(true);
+      expect(manager.query).toHaveBeenCalledTimes(2);
+      expect(manager.query.mock.calls[1][0]).not.toContain(
+        'staff_event_assignments',
+      );
+    });
+
+    it('scanTicket returns no ticket details to an unassigned staff member', async () => {
+      manager.query
+        .mockResolvedValueOnce([validationTicket])
+        .mockResolvedValueOnce([]);
+
+      const result = await service.scanTicket(
+        'qr-token',
+        staffId,
+        '7',
+        UserRole.VALIDATOR,
+      );
+
+      expect(result).toMatchObject({
+        accepted: false,
+        reason: TicketValidationReason.NOT_ASSIGNED,
+        details: null,
+      });
+      // no customer name/email lookup happened
+      expect(dataSource.query).not.toHaveBeenCalledWith(
+        expect.stringContaining('JOIN ticket_types'),
+        expect.anything(),
+      );
+    });
+  });
+
   describe('validateTicket', () => {
     it.each([
       [TicketValidationReason.NOT_FOUND, []],
@@ -373,6 +504,7 @@ describe('TicketsService', () => {
           'qr-token',
           '19',
           reason === TicketValidationReason.WRONG_EVENT ? '8' : '7',
+          UserRole.ADMIN,
         );
 
         expect(result).toMatchObject({
@@ -415,6 +547,7 @@ describe('TicketsService', () => {
         'qr-token',
         '19',
         '7',
+        UserRole.ADMIN,
       );
 
       expect(result).toEqual({
@@ -457,6 +590,8 @@ describe('TicketsService', () => {
       const result = await service.validateTicket(
         'qr-token',
         '19',
+        undefined,
+        UserRole.ADMIN,
       );
 
       expect(result.accepted).toBe(true);
@@ -480,6 +615,8 @@ describe('TicketsService', () => {
       const result = await service.validateTicket(
         'qr-token',
         '19',
+        undefined,
+        UserRole.ADMIN,
       );
 
       expect(result).toMatchObject({
@@ -545,8 +682,8 @@ describe('TicketsService', () => {
       );
 
       const results = await Promise.all([
-        service.validateTicket('qr-token', '19'),
-        service.validateTicket('qr-token', '20'),
+        service.validateTicket('qr-token', '19', undefined, UserRole.ADMIN),
+        service.validateTicket('qr-token', '20', undefined, UserRole.ADMIN),
       ]);
 
       expect(

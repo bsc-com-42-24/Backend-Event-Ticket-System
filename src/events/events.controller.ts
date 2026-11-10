@@ -52,7 +52,7 @@ export class EventsController {
   @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-  summary: 'Update event details or change status (owner/admin)',
+  summary: 'Get event details (drafts are visible to the owner/admin only)',
   })
   findOne(@Param('id', NumericIdPipe) id: string, @CurrentUser() user?: AuthUser) {
     return this.events.findOne(id, user);

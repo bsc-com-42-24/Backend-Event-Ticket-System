@@ -1,18 +1,24 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes, randomUUID } from 'crypto';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { UserRole } from '../users/user-role.enum';
 import { Ticket } from './entities/ticket.entity';
 import { TicketValidationReason } from './enums/ticket-validation-reason.enum';
 import { QrCodeService } from './qr-code/qr-code.service';
+import {
+  purchaseRequiresPayment,
+  verifyPayChanguPayment,
+  type VerifiedPayChanguPayment,
+} from './paychangu-verify';
 
 interface TicketForValidation {
   ticket_id: string;
@@ -175,13 +181,63 @@ export class TicketsService {
     });
   }
 
-  /** All tickets of an event, for its organizer (or an admin). */
+  /**
+   * Attendee / ticket-sales report for an event (organizer of the event or admin).
+   * One row per generated ticket. Sold tickets carry the buyer, ticket type, price,
+   * the real purchase time and the payment status; unsold ones have customerId = null.
+   * The old flat fields are kept so existing callers keep working.
+   */
   async findByEvent(eventId: string, user: AuthenticatedUser) {
     await this.assertCanManageEvent(eventId, user, 'Event not found');
-    return this.ticketRepository.find({
-      where: { eventId },
-      order: { id: 'ASC' },
-    });
+    return this.dataSource.query(
+      `SELECT t.ticket_id AS id,
+              t.ticket_number AS "ticketNumber",
+              t.event_id AS "eventId",
+              t.ticket_type_id AS "ticketTypeId",
+              t.customer_id AS "customerId",
+              t.status,
+              CASE WHEN t.customer_id IS NULL THEN 'UNSOLD'
+                   WHEN t.status = 'ISSUED' THEN 'VALID'
+                   WHEN t.status = 'USED' THEN 'CHECKED_IN'
+                   ELSE t.status END AS "ticketStatus",
+              t.issued_at AS "issuedAt",
+              COALESCE(t.purchased_at, pay.verified_at) AS "purchasedAt",
+              COALESCE(t.purchased_at, pay.verified_at) AS "purchaseDate",
+              t.checked_in_at AS "checkedInAt",
+              t.order_item_id AS "orderItemId",
+              CASE WHEN t.customer_id IS NULL THEN NULL
+                   ELSE COALESCE(pc.status, pay.status, 'UNVERIFIED') END AS "paymentStatus",
+              COALESCE(pc.tx_ref, pay.tx_ref) AS "paymentReference",
+              CASE WHEN u.user_id IS NULL THEN NULL
+                   ELSE json_build_object(
+                     'userId', u.user_id::text,
+                     'fullName', u.full_name,
+                     'email', u.email) END AS attendee,
+              json_build_object(
+                'ticketTypeId', tt.ticket_type_id::text,
+                'name', tt.type_name,
+                'price', tt.price,
+                'currency', trim(tt.currency)) AS "ticketType",
+              u.full_name AS "customerName",
+              u.email AS "customerEmail",
+              tt.type_name AS "typeName",
+              tt.price
+       FROM tickets t
+       JOIN ticket_types tt ON tt.ticket_type_id = t.ticket_type_id
+       LEFT JOIN users u ON u.user_id = t.customer_id
+       LEFT JOIN ticket_payment_claims pc ON pc.tx_ref = t.payment_tx_ref
+       LEFT JOIN order_items oi ON oi.order_item_id = t.order_item_id
+       LEFT JOIN LATERAL (
+         SELECT p.status, p.tx_ref, p.verified_at
+         FROM payments p
+         WHERE p.order_id = oi.order_id
+         ORDER BY (p.status = 'SUCCESS') DESC, p.created_at DESC
+         LIMIT 1
+       ) pay ON TRUE
+       WHERE t.event_id = $1
+       ORDER BY t.ticket_id ASC`,
+      [eventId],
+    );
   }
 
   /** One ticket, visible to the organizer of its event or an admin. */
@@ -222,10 +278,18 @@ export class TicketsService {
       throw new NotFoundException(notFoundMessage);
     }
   }
+  /**
+   * Validates a ticket for entry.
+   *
+   * Admins may validate any ticket. Everyone else (check-in staff) may only
+   * validate tickets of events they are assigned to by their organizer; that
+   * is the default when no role is passed, so callers fail closed.
+   */
   async validateTicket(
     qrToken: string,
     validatorId: string,
     attemptedEventId?: string,
+    validatorRole: UserRole = UserRole.VALIDATOR,
   ): Promise<TicketValidationResult> {
     const result = await this.dataSource.transaction(async (manager) => {
       const tickets: TicketForValidation[] = await manager.query(
@@ -240,6 +304,18 @@ export class TicketsService {
       const ticket = tickets[0];
       if (!ticket) {
         return this.rejected(TicketValidationReason.NOT_FOUND);
+      }
+      // Checked before anything else so staff learn nothing (status, ids,
+      // customer details) about tickets of events they are not assigned to.
+      if (
+        validatorRole !== UserRole.ADMIN &&
+        !(await this.isAssignedToEvent(
+          manager,
+          validatorId,
+          ticket.event_id,
+        ))
+      ) {
+        return this.rejected(TicketValidationReason.NOT_ASSIGNED);
       }
       if (ticket.ticket_status === 'USED') {
         return this.rejected(
@@ -280,7 +356,11 @@ export class TicketsService {
          RETURNING ticket_id, event_id, checked_in_at`,
         [ticket.ticket_id],
       );
-      const updated = updatedTickets[0];
+      // TypeORM's postgres driver returns [rows, rowCount] for UPDATE ... RETURNING
+      // (a flat row list is also accepted, as the unit-test mocks provide).
+      const updated = Array.isArray(updatedTickets[0])
+        ? (updatedTickets[0] as unknown as UpdatedTicket[])[0]
+        : updatedTickets[0];
       if (!updated) {
         return this.rejected(
           TicketValidationReason.ALREADY_USED,
@@ -300,6 +380,31 @@ export class TicketsService {
 
     await this.recordValidation(result, validatorId, attemptedEventId);
     return result;
+  }
+
+  /**
+   * True when the user is an active check-in staff member of the event's own
+   * organizer and has been assigned to this event.
+   */
+  private async isAssignedToEvent(
+    manager: EntityManager,
+    staffId: string,
+    eventId: string,
+  ): Promise<boolean> {
+    const rows: unknown[] = await manager.query(
+      `SELECT 1
+       FROM staff_event_assignments sea
+       JOIN organizer_staff os ON os.staff_id = sea.staff_id
+       JOIN users u ON u.user_id = sea.staff_id
+       JOIN events e ON e.event_id = sea.event_id
+       WHERE sea.staff_id = $1
+         AND sea.event_id = $2
+         AND u.is_active = TRUE
+         AND u.role = 'CHECK_IN_STAFF'
+         AND e.organizer_id = os.organizer_id`,
+      [staffId, eventId],
+    );
+    return rows.length > 0;
   }
 
   private rejected(
@@ -347,12 +452,21 @@ export class TicketsService {
    * Tickets are created by the organizer's generate step, so a purchase never
    * creates new rows and can never exceed the event capacity.
    */
-  async purchaseTicket(userId: string, eventId: string, ticketTypeId: string) {
+  async purchaseTicket(
+    userId: string,
+    eventId: string,
+    ticketTypeId: string,
+    txRef?: string,
+  ) {
+    // Ask PayChangu BEFORE opening the transaction so no row stays locked while we wait.
+    const paid = txRef ? await verifyPayChanguPayment(txRef) : null;
+
     return this.dataSource.transaction(async (m) => {
       const [tt] = await m.query(
          `SELECT tt.ticket_type_id, tt.is_active,
         tt.sales_start_at, tt.sales_end_at,
         tt.quantity_total, tt.quantity_sold, tt.quantity_reserved,
+        tt.price, tt.currency,
         e.status AS event_status
          FROM ticket_types tt JOIN events e ON e.event_id = tt.event_id
          WHERE tt.ticket_type_id = $1 AND tt.event_id = $2
@@ -381,6 +495,25 @@ export class TicketsService {
         throw new BadRequestException('Ticket sales are not open');
       }
 
+      // Payment gate: a priced ticket can only be claimed with a payment that
+      // PayChangu itself confirmed (verified before this transaction started).
+      if (!paid && Number(tt.price) > 0 && purchaseRequiresPayment()) {
+        throw new BadRequestException(
+          'A successful PayChangu payment (txRef) is required to buy this ticket',
+        );
+      }
+      if (paid && txRef) {
+        await this.useVerifiedPayment(m, {
+          txRef,
+          userId,
+          eventId,
+          ticketTypeId,
+          unitPrice: tt.price,
+          currency: tt.currency,
+          paid,
+        });
+      }
+
       const [ticket] = await m.query(
         `SELECT ticket_id, ticket_number, qr_token FROM tickets
          WHERE event_id = $1 AND ticket_type_id = $2
@@ -391,10 +524,14 @@ export class TicketsService {
       );
       if (!ticket) throw new BadRequestException('Tickets are sold out');
 
-      await m.query(`UPDATE tickets SET customer_id = $1 WHERE ticket_id = $2`, [
-        userId,
-        ticket.ticket_id,
-      ]);
+      await m.query(
+        `UPDATE tickets
+         SET customer_id = $1,
+             purchased_at = CURRENT_TIMESTAMP,
+             payment_tx_ref = $3
+         WHERE ticket_id = $2`,
+        [userId, ticket.ticket_id, paid && txRef ? txRef : null],
+      );
       await m.query(
         `UPDATE ticket_types SET quantity_sold = quantity_sold + 1 WHERE ticket_type_id = $1`,
         [ticketTypeId],
@@ -417,6 +554,8 @@ export class TicketsService {
          t.ticket_number,
          t.status AS ticket_status,
          t.issued_at,
+         t.checked_in_at,
+         t.purchased_at,
          t.qr_token,
 
          e.event_id,
@@ -453,7 +592,7 @@ export class TicketsService {
          ON u.user_id = e.organizer_id
 
        WHERE t.customer_id = $1
-       ORDER BY t.issued_at DESC`,
+       ORDER BY COALESCE(t.purchased_at, t.issued_at) DESC`,
       [userId],
     );
 
@@ -467,6 +606,11 @@ export class TicketsService {
           ticketNumber: r.ticket_number,
           status: r.ticket_status,
           issuedAt: r.issued_at,
+          purchasedAt: r.purchased_at ?? null,
+          checkedInAt: r.checked_in_at ?? null,
+          // flat copies of the nested ids, which is what the React app reads
+          eventId: r.event_id,
+          ticketTypeId: r.ticket_type_id,
 
           event: {
             eventId: r.event_id,
@@ -509,11 +653,13 @@ export class TicketsService {
     qrToken: string,
     validatorId: string,
     attemptedEventId?: string,
+    validatorRole: UserRole = UserRole.VALIDATOR,
   ) {
     const result = await this.validateTicket(
       qrToken,
       validatorId,
       attemptedEventId,
+      validatorRole,
     );
     if (!result.ticketId) {
       return { ...result, details: null }; // NOT_FOUND
@@ -542,5 +688,82 @@ export class TicketsService {
           }
         : null,
     };
+  }
+
+  /**
+   * Ties one purchased ticket to a verified PayChangu payment. A payment is bound
+   * to the first buyer / event / ticket type that uses it and can only be used for
+   * as many tickets as the amount paid covers (the frontend buys one ticket per call).
+   */
+  private async useVerifiedPayment(
+    m: EntityManager,
+    claim: {
+      txRef: string;
+      userId: string;
+      eventId: string;
+      ticketTypeId: string;
+      unitPrice: string | number;
+      currency: string;
+      paid: VerifiedPayChanguPayment;
+    },
+  ): Promise<void> {
+    await m.query(
+      `INSERT INTO ticket_payment_claims
+         (tx_ref, customer_id, event_id, ticket_type_id, amount, currency, provider_reference)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (tx_ref) DO NOTHING`,
+      [
+        claim.txRef,
+        claim.userId,
+        claim.eventId,
+        claim.ticketTypeId,
+        claim.paid.amount,
+        claim.paid.currency || 'MWK',
+        claim.paid.reference,
+      ],
+    );
+
+    const rows: {
+      customer_id: string;
+      event_id: string;
+      ticket_type_id: string;
+      amount: string;
+      currency: string;
+      tickets_claimed: number;
+    }[] = await m.query(
+      `SELECT customer_id, event_id, ticket_type_id, amount, currency, tickets_claimed
+       FROM ticket_payment_claims WHERE tx_ref = $1 FOR UPDATE`,
+      [claim.txRef],
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new BadRequestException('The payment could not be recorded');
+    }
+    if (String(row.customer_id) !== String(claim.userId)) {
+      throw new ForbiddenException('This payment belongs to another account');
+    }
+    if (
+      String(row.event_id) !== String(claim.eventId) ||
+      String(row.ticket_type_id) !== String(claim.ticketTypeId)
+    ) {
+      throw new BadRequestException('This payment was made for a different ticket');
+    }
+    if (String(row.currency).trim() !== String(claim.currency).trim()) {
+      throw new BadRequestException('The payment currency does not match the ticket price');
+    }
+
+    const unitCents = Math.round(Number(claim.unitPrice) * 100);
+    const paidCents = Math.round(Number(row.amount) * 100);
+    if ((Number(row.tickets_claimed) + 1) * unitCents > paidCents) {
+      throw new ConflictException(
+        'This payment has already been used for all the tickets it covers',
+      );
+    }
+
+    await m.query(
+      `UPDATE ticket_payment_claims
+       SET tickets_claimed = tickets_claimed + 1 WHERE tx_ref = $1`,
+      [claim.txRef],
+    );
   }
 }
