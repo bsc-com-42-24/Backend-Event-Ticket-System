@@ -8,3 +8,4 @@ npm-debug.log*
 .env.*
 !.env.example
 *_backup.sql
+*.dump

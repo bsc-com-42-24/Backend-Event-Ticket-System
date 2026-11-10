@@ -9,12 +9,6 @@ export interface AuthenticatedUser {
 export interface AuthResponse {
   accessToken: string;
   tokenType: 'Bearer';
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    role: UserRole;
-  };
 }
 
 export interface JwtPayload {

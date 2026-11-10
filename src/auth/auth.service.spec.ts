@@ -66,14 +66,13 @@ describe('AuthService', () => {
     expect(result).toEqual({
       accessToken: 'signed.jwt.token',
       tokenType: 'Bearer',
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: UserRole.CUSTOMER,
-      },
     });
-    expect(result.user).not.toHaveProperty('passwordHash');
+    expect(result).not.toHaveProperty('user');
+    expect(jwtService.signAsync).toHaveBeenCalledWith({
+      sub: user.id,
+      email: user.email,
+      role: UserRole.CUSTOMER,
+    });
   });
 
   it('rejects duplicate email addresses', async () => {

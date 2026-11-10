@@ -46,4 +46,10 @@ export class Ticket {
   @Column({ name: 'checked_in_at', type: 'timestamptz', nullable: true })
   checkedInAt: Date | null;
 
+  @Column({
+  name: 'order_item_id',
+  type: 'bigint',
+  nullable: true,
+  })
+  orderItemId: string | null;
 }
