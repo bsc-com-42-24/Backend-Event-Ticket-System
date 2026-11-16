@@ -9,11 +9,8 @@ import {
 } from 'class-validator';
 import { UserRole } from '../../users/user-role.enum';
 
-// ADMIN and CHECK_IN_STAFF (VALIDATOR) can never be self-assigned.
-export const SELF_REGISTRATION_ROLES = [
-  UserRole.CUSTOMER,
-  UserRole.EVENT_MANAGER,
-] as const;
+// Elevated roles are assigned by an administrator after registration.
+export const SELF_REGISTRATION_ROLES = [UserRole.CUSTOMER] as const;
 
 export class RegisterDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -34,7 +31,7 @@ export class RegisterDto {
 
   @IsOptional()
   @IsIn(SELF_REGISTRATION_ROLES, {
-    message: 'role must be ATTENDEE or ORGANIZER',
+    message: 'role must be ATTENDEE',
   })
   role?: UserRole;
 }

@@ -1,14 +1,20 @@
-import { PartialType, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional } from 'class-validator';
+import {
+  ApiPropertyOptional,
+  OmitType,
+  PartialType,
+} from '@nestjs/swagger';
+import { IsIn, IsOptional } from 'class-validator';
 import { CreateEventDto } from './create-event.dto';
 import { EventStatus } from '../enums/event-status.enum';
 
-export class UpdateEventDto extends PartialType(CreateEventDto) {
+export class UpdateEventDto extends PartialType(
+  OmitType(CreateEventDto, ['ticketTypes', 'status'] as const),
+) {
   @ApiPropertyOptional({
-    enum: EventStatus,
+    enum: [EventStatus.DRAFT, EventStatus.PUBLISHED],
     description: 'Change the event status',
   })
   @IsOptional()
-  @IsEnum(EventStatus)
-  status?: EventStatus;
+  @IsIn([EventStatus.DRAFT, EventStatus.PUBLISHED])
+  status?: EventStatus.DRAFT | EventStatus.PUBLISHED;
 }

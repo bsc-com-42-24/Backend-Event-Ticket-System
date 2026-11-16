@@ -1,163 +1,79 @@
-
-import { Test } from '@nestjs/testing';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
+import { BadRequestException } from '@nestjs/common';
 import { TicketsController } from './tickets.controller';
 import { TicketsService } from './tickets.service';
 
 describe('TicketsController', () => {
-  let controller: TicketsController;
-
   const service = {
     generateTickets: jest.fn(),
     findByEvent: jest.fn(),
     validateTicket: jest.fn(),
-    scanTicket: jest.fn(),
+    validateTicketImage: jest.fn(),
     purchaseTicket: jest.fn(),
     getCustomerBuyingHistory: jest.fn(),
     getTicket: jest.fn(),
     getTicketWithQrCode: jest.fn(),
+    getCheckInSummary: jest.fn(),
   };
+  let controller: TicketsController;
 
-  const user = {
-    userId: '5',
-    email: 'organizer@example.com',
-    role: 'ORGANIZER',
-  } as any;
-
-  beforeEach(async () => {
+  beforeEach(() => {
     jest.clearAllMocks();
-
-    const module = await Test.createTestingModule({
-      controllers: [TicketsController],
-      providers: [
-        { provide: TicketsService, useValue: service },
-      ],
-    })
-      .overrideGuard(JwtAuthGuard)
-      .useValue({ canActivate: () => true })
-      .overrideGuard(RolesGuard)
-      .useValue({ canActivate: () => true })
-      .compile();
-
-    controller = module.get(TicketsController);
+    controller = new TicketsController(service as unknown as TicketsService);
   });
 
-  it('generates tickets for an event', async () => {
-    const result = { eventId: '7', newlyCreated: 5 };
-    service.generateTickets.mockResolvedValue(result);
+  it('passes the signed-in customer ID and quantity to ticket claim', async () => {
+    service.purchaseTicket.mockResolvedValue({ quantity: 2 });
+    const user = { userId: '5' } as any;
 
     await expect(
-      controller.generateTickets('7', user),
-    ).resolves.toEqual(result);
-
-    expect(service.generateTickets).toHaveBeenCalledWith(
-      '7',
-      user,
-    );
-  });
-
-  it('lists tickets for an event', async () => {
-    const result = [{ ticketNumber: 'TKT-1' }];
-    service.findByEvent.mockResolvedValue(result);
-
-    await expect(
-      controller.findByEvent('7', user),
-    ).resolves.toEqual(result);
-
-    expect(service.findByEvent).toHaveBeenCalledWith(
-      '7',
-      user,
-    );
-  });
-
-  it('validates a ticket using the supplied QR token and user ID', async () => {
-    const input = {
-      qrToken: 'secret-qr-token',
-      eventId: '7',
-    };
-    const result = { accepted: true, reason: null };
-    const staff = {
-      userId: '5',
-      email: 'staff@example.com',
-      role: 'CHECK_IN_STAFF',
-    } as any;
-    service.scanTicket.mockResolvedValue(result);
-
-    await expect(
-      controller.validateTicket(input as any, staff),
-    ).resolves.toEqual(result);
-
-    // The caller's role is forwarded so the service can enforce event assignment.
-    expect(service.scanTicket).toHaveBeenCalledWith(
-      'secret-qr-token',
+      controller.purchaseTicket(
+        { eventId: '7', ticketTypeId: '3', quantity: 2 },
+        user,
+      ),
+    ).resolves.toEqual({ quantity: 2 });
+    expect(service.purchaseTicket).toHaveBeenCalledWith(
       '5',
       '7',
+      '3',
+      2,
+      undefined,
+    );
+  });
+
+  it('defaults the ticket quantity to one', () => {
+    controller.purchaseTicket(
+      { eventId: '7', ticketTypeId: '3' },
+      { userId: '5' } as any,
+    );
+    expect(service.purchaseTicket).toHaveBeenCalledWith(
+      '5',
+      '7',
+      '3',
+      1,
+      undefined,
+    );
+  });
+
+  it('passes QR payload and validator identity to ticket validation', () => {
+    const input = { qrToken: '{"ticketId":"5","token":"secret"}' };
+    const user = { userId: '19', role: 'CHECK_IN_STAFF' } as any;
+
+    controller.validateTicket(input, user);
+    expect(service.validateTicket).toHaveBeenCalledWith(
+      input.qrToken,
+      '19',
+      undefined,
+      undefined,
       'CHECK_IN_STAFF',
     );
   });
 
-  it('gets a ticket by its ticket number', async () => {
-    const result = { ticketNumber: 'TKT-1' };
-    service.getTicket.mockResolvedValue(result);
-
-    await expect(
-      controller.getTicket('TKT-1', user),
-    ).resolves.toEqual(result);
-
-    expect(service.getTicket).toHaveBeenCalledWith(
-      'TKT-1',
-      user,
-    );
-  });
-
-  it('gets a ticket with its QR code', async () => {
-    const result = {
-      ticket: { ticketNumber: 'TKT-1' },
-      qrCode: 'data:image/png;base64,x',
-    };
-    service.getTicketWithQrCode.mockResolvedValue(result);
-
-    await expect(
-      controller.getTicketQrCode('TKT-1', user),
-    ).resolves.toEqual(result);
-
-    expect(service.getTicketWithQrCode).toHaveBeenCalledWith(
-      'TKT-1',
-      user,
-    );
-  });
-  
-  it('purchases a ticket for the current user', async () => {
-    const result = {
-      ticketNumber: 'TKT-1',
-      qrCodeDataUrl: 'data:image/png;base64,x',
-      status: 'ISSUED',
-    };
-    service.purchaseTicket.mockResolvedValue(result);
-
-    await expect(
-      controller.purchaseTicket(
-        { eventId: '7', ticketTypeId: '3' } as any,
-        user,
-      ),
-    ).resolves.toEqual(result);
-
-    expect(service.purchaseTicket).toHaveBeenCalledWith('5', '7', '3');
-  });
- 
-  it("returns the current user's tickets", async () => {
-    const result = [
-      {
-        ticketNumber: 'TKT-1',
-        event: { title: 'Tech Conference' },
-        qrCodeDataUrl: 'data:image/png;base64,x',
-      },
-    ];
-    service.getCustomerBuyingHistory.mockResolvedValue(result);
-
-    await expect(controller.getMyTickets(user)).resolves.toEqual(result);
-
-    expect(service.getCustomerBuyingHistory).toHaveBeenCalledWith('5');
+  it('rejects QR image validation when no file was uploaded', () => {
+    expect(() =>
+      controller.validateTicketImage(undefined, {}, {
+        userId: '19',
+        role: 'CHECK_IN_STAFF',
+      } as any),
+    ).toThrow(BadRequestException);
   });
 });

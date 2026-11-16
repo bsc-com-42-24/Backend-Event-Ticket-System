@@ -59,44 +59,76 @@ describe('TicketTypesService', () => {
     );
   });
 
-  
-it('calculates ticket summary without requiring payment tables', async () => {
-  database.query
-    .mockResolvedValueOnce({
-      rows: [{ event_id: '7', organizer_id: '12', capacity: 15 }],
-    })
-    .mockResolvedValueOnce({
-      rows: [{
-        ticket_type_id: '3',
-        type_name: 'Standard',
-        currency: 'MWK',
-        sold: 2,
-        reserved: 1,
-        remaining: 7,
-        revenue: '0',
-      }],
+  it('reports low-stock warnings without inventing revenue', async () => {
+    database.query
+      .mockResolvedValueOnce({
+        rows: [{ event_id: '7', organizer_id: '12', capacity: 15 }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{
+          ticket_type_id: '3',
+          type_name: 'Standard',
+          currency: 'MWK',
+          sold: 2,
+          reserved: 1,
+          configured_remaining: 7,
+          generated_remaining: 7,
+          remaining: 7,
+          quantity: 10,
+          is_active: true,
+        }],
+      });
+
+    const summary = await service.getSalesSummary('7', owner);
+
+    expect(database.query.mock.calls[1][0]).not.toContain('order_items');
+    expect(summary.ticketTypes[0]).toMatchObject({
+      revenue: null,
+      configuredRemaining: 7,
+      generatedRemaining: 7,
+      inventoryStatus: 'LOW_STOCK',
     });
-
-  const summary = await service.getSalesSummary('7', owner);
-
-  expect(database.query.mock.calls[1][0]).not.toContain('orders');
-  expect(database.query.mock.calls[1][0]).not.toContain('order_items');
-
-  expect(summary.ticketTypes[0]).toEqual({
-    ticketTypeId: '3',
-    name: 'Standard',
-    currency: 'MWK',
-    sold: 2,
-    reserved: 1,
-    remaining: 7,
-    revenue: 0,
+    expect(summary.totals.revenueByCurrency).toBeNull();
+    expect(summary.paymentTracking).toBe('NOT_CONFIGURED');
+    expect(summary.warnings).toEqual([
+      {
+        ticketTypeId: '3',
+        name: 'Standard',
+        configuredRemaining: 7,
+        generatedRemaining: 7,
+        remaining: 7,
+        inventoryStatus: 'LOW_STOCK',
+      },
+    ]);
   });
 
-  expect(summary.totals).toEqual({
-    sold: 2,
-    reserved: 1,
-    remaining: 7,
-    revenueByCurrency: { MWK: 0 },
-  });
+  it('distinguishes ungenerated inventory from sold-out inventory', async () => {
+    database.query
+      .mockResolvedValueOnce({
+        rows: [{ event_id: '7', organizer_id: '12', capacity: 15 }],
+      })
+      .mockResolvedValueOnce({
+        rows: [{
+          ticket_type_id: '3',
+          type_name: 'Standard',
+          currency: 'MWK',
+          sold: 0,
+          reserved: 0,
+          configured_remaining: 10,
+          generated_remaining: 0,
+          remaining: 0,
+          quantity: 10,
+          is_active: true,
+        }],
+      });
+
+    const summary = await service.getSalesSummary('7', owner);
+
+    expect(summary.ticketTypes[0]).toMatchObject({
+      configuredRemaining: 10,
+      generatedRemaining: 0,
+      remaining: 0,
+      inventoryStatus: 'NEEDS_GENERATION',
+    });
   });
 });

@@ -1,16 +1,22 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   HttpCode,
   Param,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiBody,
   ApiConflictResponse,
+  ApiConsumes,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -29,6 +35,7 @@ import { PurchaseTicketDto } from './dto/purchase-ticket.dto';
 import {
   TicketValidationResponseDto,
   ValidateTicketDto,
+  ValidateTicketImageDto,
 } from './dto/validate-ticket.dto';
 import { TicketsService } from './tickets.service';
 
@@ -39,57 +46,42 @@ import { TicketsService } from './tickets.service';
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
 
-  // Static routes (purchase, history, validate, events/...) must stay
-  // above ':ticketNumber'.
-
   @Post('purchase')
   @HttpCode(201)
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
   @ApiOperation({
-    summary: 'Buy a ticket of a ticket type (claims a generated ticket)',
+    summary: 'Claim generated tickets after any required payment is verified',
   })
   @ApiBadRequestResponse({
-    description: 'Invalid ids, sales not open, or tickets sold out.',
+    description:
+      'The quantity, sales window, payment reference, or ticket type is invalid.',
+  })
+  @ApiConflictResponse({
+    description:
+      'Sales are closed, stock is insufficient, the per-order limit is exceeded, or required payment is missing.',
   })
   @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
   @ApiForbiddenResponse({
-    description: 'Only customers and administrators may buy tickets.',
+    description: 'Only customers and administrators may claim tickets.',
   })
-  @ApiNotFoundResponse({
-    description: 'The ticket type or event is unavailable.',
-  })
+  @ApiNotFoundResponse({ description: 'The ticket type is unavailable.' })
   purchaseTicket(
     @Body() body: PurchaseTicketDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    // Only forward the payment reference when the client sent one.
-    if (body.txRef === undefined) {
-      return this.ticketsService.purchaseTicket(
-        user.userId,
-        body.eventId,
-        body.ticketTypeId,
-      );
-    }
     return this.ticketsService.purchaseTicket(
       user.userId,
       body.eventId,
       body.ticketTypeId,
+      body.quantity ?? 1,
       body.txRef,
     );
   }
 
-  @Get('mine')
+  @Get('history')
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
-  @ApiOperation({
-    summary: 'Get my tickets with event details and QR code images',
-  })
-  @ApiUnauthorizedResponse({
-    description: 'A valid bearer token is required.',
-  })
-  @ApiForbiddenResponse({
-    description: 'Only customers and administrators may view their tickets.',
-  })
-  getMyTickets(@CurrentUser() user: AuthenticatedUser) {
+  @ApiOperation({ summary: "List the current customer's tickets and QR codes" })
+  getHistory(@CurrentUser() user: AuthenticatedUser) {
     return this.ticketsService.getCustomerBuyingHistory(user.userId);
   }
 
@@ -97,24 +89,14 @@ export class TicketsController {
   @HttpCode(200)
   @Roles(UserRole.EVENT_MANAGER, UserRole.ADMIN)
   @ApiOperation({
-    summary:
-      'Generate the tickets for an event from its capacity and ticket types',
+    summary: "Generate tickets from an event's active ticket type limits",
   })
   @ApiOkResponse({
     description:
-      'Tickets created. Calling it again only creates tickets that are still missing.',
-  })
-  @ApiBadRequestResponse({ description: 'The event ID is invalid.' })
-  @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
-  @ApiForbiddenResponse({
-    description: 'Only organizers and administrators may generate tickets.',
-  })
-  @ApiNotFoundResponse({
-    description: 'The event does not exist or belongs to another organizer.',
+      'Creates only missing tickets; repeating the request does not create duplicates.',
   })
   @ApiConflictResponse({
-    description:
-      'The event is cancelled/completed, has no active ticket types, or would exceed its capacity.',
+    description: 'The event is closed, no types are active, or capacity is exceeded.',
   })
   generateTickets(
     @Param('eventId', NumericIdPipe) eventId: string,
@@ -125,10 +107,7 @@ export class TicketsController {
 
   @Get('events/:eventId')
   @Roles(UserRole.EVENT_MANAGER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'List all tickets generated for an event' })
-  @ApiNotFoundResponse({
-    description: 'The event does not exist or belongs to another organizer.',
-  })
+  @ApiOperation({ summary: 'List tickets for an event you manage' })
   findByEvent(
     @Param('eventId', NumericIdPipe) eventId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -138,54 +117,96 @@ export class TicketsController {
 
   @Post('validate')
   @HttpCode(200)
-  @Roles(UserRole.VALIDATOR, UserRole.ADMIN)
+  @Roles(UserRole.VALIDATOR, UserRole.EVENT_MANAGER, UserRole.ADMIN)
   @ApiOperation({
-    summary:
-      'Validate a ticket QR token for event entry (returns the ticket details)',
+    summary: 'Validate a QR payload or manually entered ticket number',
   })
   @ApiOkResponse({
     description:
-      'Returns accepted=true or accepted=false with a specific rejection reason (including NOT_ASSIGNED when check-in staff scan a ticket of an event they are not assigned to), plus a details object (ticket number, type, event, customer) when the ticket exists and the scanner may see it.',
+      'Returns an acceptance decision, reason, ticket details, and event details.',
     type: TicketValidationResponseDto,
   })
   @ApiBadRequestResponse({
-    description: 'The QR token or event ID is invalid.',
-  })
-  @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
-  @ApiForbiddenResponse({
-    description: 'Only check-in staff and administrators may validate tickets.',
+    description:
+      'Provide exactly one valid qrToken or ticketNumber and an optional eventId.',
   })
   validateTicket(
     @Body() input: ValidateTicketDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.ticketsService.scanTicket(
+    return this.ticketsService.validateTicket(
       input.qrToken,
+      user.userId,
+      input.eventId,
+      input.ticketNumber,
+      user.role,
+    );
+  }
+
+  @Post('validate/image')
+  @HttpCode(200)
+  @Roles(UserRole.VALIDATOR, UserRole.EVENT_MANAGER, UserRole.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        eventId: { type: 'string', example: '42' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Validate a ticket by uploading its QR image' })
+  validateTicketImage(
+    @UploadedFile() file: { buffer: Buffer } | undefined,
+    @Body() input: ValidateTicketImageDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Upload a QR image using the "file" field.');
+    }
+
+    return this.ticketsService.validateTicketImage(
+      file.buffer,
       user.userId,
       input.eventId,
       user.role,
     );
   }
 
-  @Get(':ticketNumber')
+  @Get('events/:eventId/check-in-summary')
   @Roles(UserRole.EVENT_MANAGER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Get one ticket of one of my events' })
-  @ApiNotFoundResponse({ description: 'Ticket not found.' })
-  getTicket(
-    @Param('ticketNumber') ticketNumber: string,
+  @ApiOperation({ summary: 'View check-in progress for an event you manage' })
+  getCheckInSummary(
+    @Param('eventId', NumericIdPipe) eventId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.ticketsService.getTicket(ticketNumber, user);
+    return this.ticketsService.getCheckInSummary(eventId, user);
   }
 
   @Get(':ticketNumber/qr')
   @Roles(UserRole.EVENT_MANAGER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Get a ticket with its QR code (PNG data URL)' })
-  @ApiNotFoundResponse({ description: 'Ticket not found.' })
+  @ApiOperation({ summary: 'Get a ticket and QR code for your event' })
   getTicketQrCode(
     @Param('ticketNumber') ticketNumber: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.ticketsService.getTicketWithQrCode(ticketNumber, user);
+  }
+
+  @Get(':ticketNumber')
+  @Roles(UserRole.EVENT_MANAGER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get one ticket from an event you manage' })
+  getTicket(
+    @Param('ticketNumber') ticketNumber: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ticketsService.getTicket(ticketNumber, user);
   }
 }

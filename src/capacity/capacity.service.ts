@@ -1,13 +1,10 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Event } from '../events/entities/event.entity';
 import { EventStatus } from '../events/enums/event-status.enum';
+
+const LOW_STOCK_THRESHOLD = 10;
 
 @Injectable()
 export class CapacityService {
@@ -16,108 +13,85 @@ export class CapacityService {
     private readonly dataSource: DataSource,
   ) {}
 
-  // FR-CAP-01/02/03
   async getAvailability(eventId: string) {
-    const e = await this.repo.findOne({ where: { id: eventId } });
-    if (!e || e.status === EventStatus.DRAFT) throw new NotFoundException('Event not found');
-    const remaining = Math.max(e.capacity - e.ticketsIssued, 0);
-    const ticketTypes = await this.dataSource.query(
+    const event = await this.repo.findOne({ where: { id: eventId } });
+    if (!event || event.status !== EventStatus.PUBLISHED) {
+      throw new NotFoundException('Event not found');
+    }
+
+    const rows = await this.dataSource.query(
       `SELECT ticket_type_id, type_name, price, currency, quantity_total,
               quantity_sold, quantity_reserved,
-              GREATEST(quantity_total - quantity_sold - quantity_reserved, 0) AS remaining
-       FROM ticket_types
-       WHERE event_id = $1 AND is_active = TRUE
+              GREATEST(quantity_total - quantity_sold - quantity_reserved, 0) AS configured_remaining,
+              (SELECT COUNT(*)::int
+               FROM tickets t
+               WHERE t.event_id = tt.event_id
+                 AND t.ticket_type_id = tt.ticket_type_id
+                 AND t.customer_id IS NULL
+                 AND t.status = 'ISSUED') AS generated_remaining,
+              sales_start_at, sales_end_at
+       FROM ticket_types tt
+       WHERE tt.event_id = $1 AND tt.is_active = TRUE
        ORDER BY ticket_type_id`,
       [eventId],
     );
-    return {
-      eventId: e.id,
-      status: e.status,
-      capacity: e.capacity,
-      ticketsIssued: e.ticketsIssued,
-      remainingTickets: remaining,
-      soldOut: remaining === 0,
-      salesOpen: e.status === EventStatus.PUBLISHED && e.endAt > new Date() && remaining > 0,
-      ticketTypes: ticketTypes.map((ticketType) => ({
-        ticketTypeId: String(ticketType.ticket_type_id),
-        name: ticketType.type_name,
-        price: Number(ticketType.price),
-        currency: String(ticketType.currency).trim(),
-        quantity: Number(ticketType.quantity_total),
-        sold: Number(ticketType.quantity_sold),
-        reserved: Number(ticketType.quantity_reserved),
-        remaining: Number(ticketType.remaining),
-      })),
-    };
-  }
 
-  /**
-   * FR-CAP-04/05/06 — atomically claim `quantity` tickets.
-   * ONE conditional UPDATE does the check and the increment together, so two
-   * simultaneous buyers can never both take the last ticket (Postgres row lock).
-   *
-   * Member 4: call this INSIDE your purchase transaction, passing its manager,
-   * so the counter rolls back if inserting the tickets fails:
-   *   await dataSource.transaction(async (m) => {
-   *     await capacityService.reserve(eventId, qty, m);
-   *     ...insert tickets with m...
-   *   });
-   * Throws if the event is not PUBLISHED, has ended, or lacks capacity.
-   */
-  async reserve(eventId: string, quantity: number, manager?: EntityManager): Promise<void> {
-    this.assertQuantity(quantity);
-    const repo = manager ? manager.getRepository(Event) : this.repo;
+    const now = new Date();
+    const eventSalesOpen =
+      event.startAt > now && event.endAt > now;
+    const ticketTypes = rows.map((row) => {
+      const configuredRemaining = Number(row.configured_remaining);
+      const generatedRemaining = Number(row.generated_remaining);
+      const remaining = Math.min(configuredRemaining, generatedRemaining);
+      const needsGeneration = generatedRemaining < configuredRemaining;
+      const salesStarted =
+        !row.sales_start_at || new Date(row.sales_start_at) <= now;
+      const salesNotEnded =
+        !row.sales_end_at || new Date(row.sales_end_at) >= now;
+      const salesOpen =
+        eventSalesOpen &&
+        remaining > 0 &&
+        salesStarted &&
+        salesNotEnded;
 
-    const result = await repo
-      .createQueryBuilder()
-      .update(Event)
-      .set({ ticketsIssued: () => 'tickets_issued + :qty' })
-      .where('event_id = :id', { id: eventId })
-      .andWhere('status = :status', { status: EventStatus.PUBLISHED })
-      .andWhere('end_at > NOW()')
-      .andWhere('tickets_issued + :qty <= capacity')
-      .setParameters({ qty: quantity })
-      .execute();
-
-    if (result.affected === 1) return;
-    await this.explainFailure(repo, eventId);
-  }
-
-  /** Give tickets back (ticket cancelled / purchase rolled back outside a transaction). */
-  async release(eventId: string, quantity: number, manager?: EntityManager): Promise<void> {
-    this.assertQuantity(quantity);
-    const repo = manager ? manager.getRepository(Event) : this.repo;
-
-    const result = await repo
-      .createQueryBuilder()
-      .update(Event)
-      .set({ ticketsIssued: () => 'tickets_issued - :qty' })
-      .where('event_id = :id', { id: eventId })
-      .andWhere('tickets_issued >= :qty')
-      .setParameters({ qty: quantity })
-      .execute();
-
-    if (result.affected !== 1) {
-      throw new ConflictException('Cannot release more tickets than were issued');
-    }
-  }
-
-  private assertQuantity(q: number) {
-    if (!Number.isInteger(q) || q < 1) {
-      throw new BadRequestException('Quantity must be a positive integer');
-    }
-  }
-
-  private async explainFailure(repo: Repository<Event>, eventId: string): Promise<never> {
-    const e = await repo.findOne({ where: { id: eventId } });
-    if (!e) throw new NotFoundException('Event not found');
-    if (e.status !== EventStatus.PUBLISHED) {
-      throw new ConflictException(`Tickets are not on sale: event is ${e.status}`);
-    }
-    if (e.endAt <= new Date()) throw new ConflictException('Tickets are not on sale: event has ended');
-    const remaining = e.capacity - e.ticketsIssued;
-    throw new ConflictException(
-      remaining <= 0 ? 'Event is sold out' : `Only ${remaining} ticket(s) remaining`,
+      return {
+        ticketTypeId: String(row.ticket_type_id),
+        name: row.type_name,
+        price: Number(row.price),
+        currency: String(row.currency).trim(),
+        quantity: Number(row.quantity_total),
+        sold: Number(row.quantity_sold),
+        reserved: Number(row.quantity_reserved),
+        configuredRemaining,
+        generatedRemaining,
+        remaining,
+        needsGeneration,
+        lowStock: remaining > 0 && remaining <= LOW_STOCK_THRESHOLD,
+        salesOpen,
+      };
+    });
+    const remaining = ticketTypes.reduce(
+      (total, ticketType) => total + ticketType.remaining,
+      0,
     );
+
+    return {
+      eventId: event.id,
+      status: event.status,
+      capacity: event.capacity,
+      ticketsIssued: event.ticketsIssued,
+      remainingTickets: remaining,
+      unallocatedCapacity: Math.max(
+        event.capacity - event.ticketsIssued,
+        0,
+      ),
+      soldOut:
+        ticketTypes.length === 0 ||
+        ticketTypes.every((ticketType) => ticketType.configuredRemaining === 0),
+      needsGeneration: ticketTypes.some((ticketType) => ticketType.needsGeneration),
+      lowStockThreshold: LOW_STOCK_THRESHOLD,
+      salesOpen: ticketTypes.some((ticketType) => ticketType.salesOpen),
+      ticketTypes,
+    };
   }
 }

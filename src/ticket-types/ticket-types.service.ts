@@ -16,13 +16,15 @@ import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
 @Injectable()
 export class TicketTypesService {
   private readonly logger = new Logger(TicketTypesService.name);
+  private readonly lowStockThreshold = 10;
 
   constructor(private readonly database: DatabaseService) {}
 
   async findPublic(eventId: string) {
     const event = await this.database.query(
       `SELECT event_id FROM events
-       WHERE event_id = $1 AND status IN ('PUBLISHED', 'CANCELLED', 'COMPLETED')`,
+       WHERE event_id = $1 AND status = 'PUBLISHED'
+         AND start_at > NOW() AND end_at > NOW()`,
       [eventId],
     );
     if (!event.rows.length) throw new NotFoundException('Published event not found');
@@ -30,10 +32,25 @@ export class TicketTypesService {
     const result = await this.database.query(
       `SELECT ticket_type_id, event_id, type_name, description, price, currency,
               quantity_total, quantity_sold, quantity_reserved,
-              (quantity_total - quantity_sold - quantity_reserved) AS remaining,
+              GREATEST(quantity_total - quantity_sold - quantity_reserved, 0) AS configured_remaining,
+              (SELECT COUNT(*)::int
+               FROM tickets t
+               WHERE t.event_id = tt.event_id
+                 AND t.ticket_type_id = tt.ticket_type_id
+                 AND t.customer_id IS NULL
+                 AND t.status = 'ISSUED') AS generated_remaining,
+              LEAST(
+                GREATEST(quantity_total - quantity_sold - quantity_reserved, 0),
+                (SELECT COUNT(*)::int
+                 FROM tickets t
+                 WHERE t.event_id = tt.event_id
+                   AND t.ticket_type_id = tt.ticket_type_id
+                   AND t.customer_id IS NULL
+                   AND t.status = 'ISSUED')
+              ) AS remaining,
               per_order_limit, sales_start_at, sales_end_at, is_active
-       FROM ticket_types
-       WHERE event_id = $1 AND is_active = TRUE
+       FROM ticket_types tt
+       WHERE tt.event_id = $1 AND tt.is_active = TRUE
        ORDER BY ticket_type_id`,
       [eventId],
     );
@@ -129,15 +146,14 @@ export class TicketTypesService {
       const updated = await client.query(
         `UPDATE ticket_types
          SET type_name = COALESCE($1, type_name),
-         description = CASE WHEN $2 THEN $3 ELSE description END,
-         price = COALESCE($4, price),
-         currency = COALESCE($5, currency),
-         quantity_total = $6,
-         per_order_limit = COALESCE($7, per_order_limit),
-         sales_start_at = CASE WHEN $8 THEN $9 ELSE sales_start_at END,
-         sales_end_at = CASE WHEN $10 THEN $11 ELSE sales_end_at END,
-         is_active = CASE WHEN $12 THEN $13 ELSE is_active END
-         WHERE ticket_type_id = $14 AND event_id = $15
+             description = CASE WHEN $2 THEN $3 ELSE description END,
+             price = COALESCE($4, price),
+             currency = COALESCE($5, currency),
+             quantity_total = $6,
+             per_order_limit = COALESCE($7, per_order_limit),
+             sales_start_at = CASE WHEN $8 THEN $9 ELSE sales_start_at END,
+             sales_end_at = CASE WHEN $10 THEN $11 ELSE sales_end_at END
+         WHERE ticket_type_id = $12 AND event_id = $13
          RETURNING ticket_type_id, event_id, type_name, description, price, currency,
                    quantity_total, quantity_sold, quantity_reserved,
                    (quantity_total - quantity_sold - quantity_reserved) AS remaining,
@@ -154,15 +170,38 @@ export class TicketTypesService {
           dto.salesStartAt ?? null,
           dto.salesEndAt !== undefined,
           dto.salesEndAt ?? null,
-          dto.isActive !== undefined,
-          dto.isActive ?? null,
           ticketTypeId,
           eventId,
         ],
-        
       );
       await client.query('COMMIT');
       return this.toTicketType(updated.rows[0]);
+    } catch (error) {
+      await this.rollback(client);
+      this.throwIfDuplicateTypeName(error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async deactivate(eventId: string, ticketTypeId: string, user: AuthenticatedUser) {
+    const client = await this.database.getClient();
+    try {
+      await client.query('BEGIN');
+      await this.lockManagedEvent(client, eventId, user);
+      const type = await this.lockTicketType(client, eventId, ticketTypeId);
+      const result = await client.query(
+        `UPDATE ticket_types SET is_active = FALSE
+         WHERE ticket_type_id = $1 AND event_id = $2
+         RETURNING ticket_type_id, event_id, type_name, description, price, currency,
+                   quantity_total, quantity_sold, quantity_reserved,
+                   (quantity_total - quantity_sold - quantity_reserved) AS remaining,
+                   per_order_limit, sales_start_at, sales_end_at, is_active`,
+        [type.ticket_type_id, eventId],
+      );
+      await client.query('COMMIT');
+      return this.toTicketType(result.rows[0]);
     } catch (error) {
       await this.rollback(client);
       this.throwIfDuplicateTypeName(error);
@@ -176,37 +215,96 @@ export class TicketTypesService {
     const event = await this.getManagedEvent(eventId, user);
     const result = await this.database.query(
       `SELECT tt.ticket_type_id, tt.type_name, tt.currency,
-          tt.quantity_sold AS sold,
-          tt.quantity_reserved AS reserved,
-          (tt.quantity_total - tt.quantity_sold - tt.quantity_reserved) AS remaining,
-          (tt.quantity_sold * tt.price) AS revenue
-      FROM ticket_types tt
-      WHERE tt.event_id = $1
-      ORDER BY tt.ticket_type_id`,
+              tt.quantity_sold AS sold, tt.quantity_reserved AS reserved,
+              GREATEST(tt.quantity_total - tt.quantity_sold - tt.quantity_reserved, 0) AS configured_remaining,
+              (SELECT COUNT(*)::int
+               FROM tickets t
+               WHERE t.event_id = tt.event_id
+                 AND t.ticket_type_id = tt.ticket_type_id
+                 AND t.customer_id IS NULL
+                 AND t.status = 'ISSUED') AS generated_remaining,
+              LEAST(
+                GREATEST(tt.quantity_total - tt.quantity_sold - tt.quantity_reserved, 0),
+                (SELECT COUNT(*)::int
+                 FROM tickets t
+                 WHERE t.event_id = tt.event_id
+                   AND t.ticket_type_id = tt.ticket_type_id
+                   AND t.customer_id IS NULL
+                   AND t.status = 'ISSUED')
+              ) AS remaining,
+              tt.quantity_total AS quantity, tt.is_active
+       FROM ticket_types tt
+       WHERE tt.event_id = $1
+       ORDER BY tt.ticket_type_id`,
       [eventId],
     );
+    const ticketTypes = result.rows.map((row) => {
+      const configuredRemaining = Number(row.configured_remaining);
+      const generatedRemaining = Number(row.generated_remaining);
+      const remaining = row.is_active ? Number(row.remaining) : 0;
+      const inventoryStatus = !row.is_active
+        ? 'INACTIVE'
+        : configuredRemaining === 0
+          ? 'SOLD_OUT'
+          : generatedRemaining < configuredRemaining
+            ? 'NEEDS_GENERATION'
+            : remaining <= this.lowStockThreshold
+              ? 'LOW_STOCK'
+              : 'AVAILABLE';
 
-    const ticketTypes = result.rows.map((row) => ({
-      ticketTypeId: String(row.ticket_type_id),
-      name: row.type_name,
-      currency: row.currency.trim(),
-      sold: Number(row.sold),
-      reserved: Number(row.reserved),
-      remaining: Number(row.remaining),
-      revenue: Number(row.revenue),
-    }));
-    const revenueByCurrency = ticketTypes.reduce<Record<string, number>>((totals, type) => {
-      totals[type.currency] = (totals[type.currency] ?? 0) + type.revenue;
-      return totals;
-    }, {});
+      return {
+        ticketTypeId: String(row.ticket_type_id),
+        name: row.type_name,
+        currency: row.currency.trim(),
+        sold: Number(row.sold),
+        reserved: Number(row.reserved),
+        configuredRemaining,
+        generatedRemaining,
+        remaining,
+        isActive: row.is_active,
+        revenue: null,
+        inventoryStatus,
+      };
+    });
     return {
       eventId: String(event.event_id),
       totals: {
         sold: ticketTypes.reduce((total, type) => total + type.sold, 0),
         reserved: ticketTypes.reduce((total, type) => total + type.reserved, 0),
         remaining: ticketTypes.reduce((total, type) => total + type.remaining, 0),
-        revenueByCurrency,
+        configuredRemaining: ticketTypes.reduce(
+          (total, type) => total + type.configuredRemaining,
+          0,
+        ),
+        generatedRemaining: ticketTypes.reduce(
+          (total, type) => total + type.generatedRemaining,
+          0,
+        ),
+        revenueByCurrency: null,
       },
+      lowStockThreshold: this.lowStockThreshold,
+      paymentTracking: 'NOT_CONFIGURED',
+      warnings: ticketTypes
+        .filter(
+          (type) =>
+            type.inventoryStatus !== 'AVAILABLE' &&
+            type.inventoryStatus !== 'INACTIVE',
+        )
+        .map(({
+          ticketTypeId,
+          name,
+          configuredRemaining,
+          generatedRemaining,
+          remaining,
+          inventoryStatus,
+        }) => ({
+          ticketTypeId,
+          name,
+          configuredRemaining,
+          generatedRemaining,
+          remaining,
+          inventoryStatus,
+        })),
       ticketTypes,
     };
   }
@@ -217,7 +315,9 @@ export class TicketTypesService {
       `SELECT COUNT(*)::int AS issued,
               COUNT(*) FILTER (WHERE checked_in_at IS NOT NULL OR status = 'USED')::int AS checked_in
       FROM tickets
-      WHERE event_id = $1 AND status IN ('ISSUED', 'USED')`,
+      WHERE event_id = $1
+        AND (customer_id IS NOT NULL OR status = 'USED')
+        AND status IN ('ISSUED', 'USED')`,
       [eventId],
     );
     const issued = Number(result.rows[0].issued);
@@ -232,12 +332,15 @@ export class TicketTypesService {
 
   private async lockManagedEvent(client: PoolClient, eventId: string, user: AuthenticatedUser) {
     const result = await client.query(
-      `SELECT event_id, organizer_id, capacity
+      `SELECT event_id, organizer_id, capacity, status
        FROM events WHERE event_id = $1 FOR UPDATE`,
       [eventId],
     );
     if (!result.rows.length) throw new NotFoundException('Event not found');
     this.assertOwnerOrAdmin(result.rows[0], user);
+    if (result.rows[0].status === 'CANCELLED') {
+      throw new ConflictException('Cancelled events cannot be updated');
+    }
     return result.rows[0];
   }
 
@@ -302,6 +405,8 @@ export class TicketTypesService {
     quantity_sold: string | number;
     quantity_reserved: string | number;
     remaining: string | number;
+    generated_remaining?: string | number;
+    configured_remaining?: string | number;
     per_order_limit: string | number;
     sales_start_at: Date | null;
     sales_end_at: Date | null;
@@ -317,7 +422,20 @@ export class TicketTypesService {
       quantity: Number(row.quantity_total),
       sold: Number(row.quantity_sold),
       reserved: Number(row.quantity_reserved),
+      configuredRemaining:
+        row.configured_remaining === undefined
+          ? Math.max(
+              Number(row.quantity_total) -
+                Number(row.quantity_sold) -
+                Number(row.quantity_reserved),
+              0,
+            )
+          : Number(row.configured_remaining),
       remaining: Number(row.remaining),
+      generatedRemaining:
+        row.generated_remaining === undefined
+          ? null
+          : Number(row.generated_remaining),
       perOrderLimit: Number(row.per_order_limit),
       salesStartAt: row.sales_start_at,
       salesEndAt: row.sales_end_at,

@@ -38,7 +38,7 @@ export class EventsService {
     }
 
     // Separate ticket types from event properties.
-    const { ticketTypes, ...eventData } = dto;
+    const { ticketTypes, status, ...eventData } = dto;
 
     // Check that ticket quantities do not exceed event capacity.
     const totalQuantity = ticketTypes.reduce(
@@ -71,7 +71,9 @@ export class EventsService {
         const event = manager.create(Event, {
           ...eventData,
           ticketsIssued: 0,
-          status: EventStatus.DRAFT,
+          status: status ?? EventStatus.DRAFT,
+          publishedAt:
+            status === EventStatus.PUBLISHED ? new Date() : null,
           organizerId: user.userId,
         });
 
@@ -167,6 +169,7 @@ export class EventsService {
     const qb = this.repo
       .createQueryBuilder('e')
       .where('e.status = :status', { status: EventStatus.PUBLISHED })
+      .andWhere('e.startAt > NOW()')
       .andWhere('e.endAt > NOW()');
 
     return this.paginate(qb, q);
@@ -205,49 +208,18 @@ export class EventsService {
 
   // FR-EVENT-06 — row is locked so capacity changes can't race with ticket purchases
   async update(id: string, dto: UpdateEventDto, user: AuthUser) {
-  return this.dataSource.transaction(async (m) => {
-    const event = await this.lockAndGet(m, id);
-    this.assertCanManage(event, user);
+    return this.dataSource.transaction(async (m) => {
+      const event = await this.lockAndGet(m, id);
+      this.assertCanManage(event, user);
 
-    if (event.status === EventStatus.CANCELLED) {
-      throw new ConflictException('Cancelled events cannot be updated');
-    }
-
-    const { status, ...eventChanges } = dto;
-
-    const changes = Object.fromEntries(
-      Object.entries(eventChanges).filter(([, v]) => v !== undefined),
-    );
-
-    // Handle event status changes.
-    if (status !== undefined) {
-      if (status === EventStatus.PUBLISHED) {
-        if (event.status !== EventStatus.DRAFT) {
-          throw new ConflictException(
-            'Only DRAFT events can be published',
-          );
-        }
-
-        if (event.endAt <= new Date()) {
-          throw new BadRequestException(
-            'Cannot publish an event that has already ended',
-          );
-        }
-
-        event.status = EventStatus.PUBLISHED;
-        event.publishedAt = new Date();
-      } else if (status === EventStatus.CANCELLED) {
-        event.status = EventStatus.CANCELLED;
-        event.cancelledAt = new Date();
-      } else {
-        throw new BadRequestException(
-          'Events cannot be moved back to DRAFT',
-        );
+      if (event.status === EventStatus.CANCELLED) {
+        throw new ConflictException('Cancelled events cannot be updated');
       }
-    }
 
-    // Validate event details only when details are being updated.
-    if (Object.keys(changes).length > 0) {
+      const changes = Object.fromEntries(
+        Object.entries(dto).filter(([, v]) => v !== undefined),
+      );
+
       const startAt = dto.startAt ?? event.startAt;
       const endAt = dto.endAt ?? event.endAt;
 
@@ -257,14 +229,30 @@ export class EventsService {
         throw new BadRequestException('startAt must be in the future');
       }
 
-      if (dto.endAt && endAt <= new Date()) {
+      if (endAt <= new Date()) {
         throw new BadRequestException('endAt must be in the future');
       }
 
-      if (
-        dto.capacity !== undefined &&
-        dto.capacity < event.ticketsIssued
-      ) {
+      if (dto.status === EventStatus.DRAFT && event.status === EventStatus.PUBLISHED) {
+        throw new ConflictException(
+          'A published event cannot be changed back to draft',
+        );
+      }
+
+      if (dto.status === EventStatus.PUBLISHED) {
+        if (event.status !== EventStatus.DRAFT) {
+          throw new ConflictException('Only DRAFT events can be published');
+        }
+        if (startAt <= new Date()) {
+          throw new BadRequestException(
+            'Cannot publish an event that has already started',
+          );
+        }
+        event.publishedAt = new Date();
+      }
+
+      // FR-CAP-06: can never drop capacity below what is already issued
+      if (dto.capacity !== undefined && dto.capacity < event.ticketsIssued) {
         throw new ConflictException(
           `Capacity cannot be lower than tickets already issued (${event.ticketsIssued})`,
         );
@@ -285,32 +273,6 @@ export class EventsService {
       }
 
       Object.assign(event, changes);
-    }
-
-    return this.toResponse(await m.save(event));
-  });
-}
-
-  // FR-EVENT-08 — DRAFT -> PUBLISHED
-  async publish(id: string, user: AuthUser) {
-    return this.dataSource.transaction(async (m) => {
-      const event = await this.lockAndGet(m, id);
-      this.assertCanManage(event, user);
-
-      if (event.status !== EventStatus.DRAFT) {
-        throw new ConflictException(
-          `Only DRAFT events can be published (current status: ${event.status})`,
-        );
-      }
-
-      if (event.endAt <= new Date()) {
-        throw new BadRequestException(
-          'Cannot publish an event that has already ended',
-        );
-      }
-
-      event.status = EventStatus.PUBLISHED;
-      event.publishedAt = new Date();
 
       return this.toResponse(await m.save(event));
     });
@@ -341,7 +303,7 @@ export class EventsService {
   ) {
     if (q.search) {
       qb.andWhere(
-        '(e.title ILIKE :s OR e.description ILIKE :s OR e.venue ILIKE :s)',
+        '(e.title ILIKE :s OR e.description ILIKE :s OR e.venue ILIKE :s OR e.location ILIKE :s)',
         { s: `%${q.search}%` },
       );
     }
@@ -362,7 +324,14 @@ export class EventsService {
     }
 
     if (q.availableOnly) {
-      qb.andWhere('e.ticketsIssued < e.capacity');
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM ticket_types tt
+          WHERE tt.event_id = e.event_id
+            AND tt.is_active = TRUE
+            AND tt.quantity_total > tt.quantity_sold + tt.quantity_reserved
+        )`,
+      );
     }
 
     const [items, total] = await qb
@@ -421,7 +390,7 @@ export class EventsService {
   private toResponse(e: Event) {
     return {
       ...e,
-      remainingTickets: Math.max(e.capacity - e.ticketsIssued, 0),
+      unallocatedCapacity: Math.max(e.capacity - e.ticketsIssued, 0),
     };
   }
 }

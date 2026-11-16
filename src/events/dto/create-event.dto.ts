@@ -3,6 +3,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsDate,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -15,6 +16,7 @@ import {
 } from 'class-validator';
 
 import { CreateTicketTypeDto } from '../../ticket-types/dto/create-ticket-type.dto';
+import { EventStatus } from '../enums/event-status.enum';
 
 const Trim = () =>
   Transform(({ value }): unknown =>
@@ -75,6 +77,10 @@ export class CreateEventDto {
   @Min(1)
   @Max(1_000_000)
   capacity: number;
+
+  @IsOptional()
+  @IsIn([EventStatus.DRAFT, EventStatus.PUBLISHED])
+  status?: EventStatus.DRAFT | EventStatus.PUBLISHED;
 
   // Ticket types are now submitted when creating an event.
   @IsArray()
