@@ -1,15 +1,18 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { AdminController } from './admin/admin.controller';
 import { AuthModule } from './auth/auth.module';
 import { CapacityModule } from './capacity/capacity.module';
 import { environmentValidationSchema } from './config/environment.validation';
+import { ContactController } from './contact/contact.controller';
+import { EventsModule } from './events/events.module';
 import { OrdersModule } from './orders/orders.module';
 import { OrganizersModule } from './organizers/organizers.module';
+import { StaffController } from './organizers/staff.controller';
 import { PaymentsModule } from './payments/payments.module';
-import { EventsModule } from './events/events.module';
-import { TicketsModule } from './tickets/tickets.module';
 import { TicketTypesModule } from './ticket-types/ticket-types.module';
+import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -43,5 +46,6 @@ import { UsersModule } from './users/users.module';
     OrganizersModule,
     PaymentsModule,
   ],
+  controllers: [StaffController, ContactController, AdminController],
 })
 export class AppModule {}

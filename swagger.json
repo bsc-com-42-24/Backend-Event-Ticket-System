@@ -1,6 +1,283 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/staff/me/events": {
+      "get": {
+        "operationId": "StaffController_getMyAssignedEvents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "List of assigned events."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only check-in staff may access assigned events."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Fetch events assigned to the logged-in scanner/staff member",
+        "tags": [
+          "Staff"
+        ]
+      }
+    },
+    "/contact": {
+      "post": {
+        "operationId": "ContactController_submitContact",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateContactDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Submit a public contact/support message",
+        "tags": [
+          "Contact"
+        ]
+      }
+    },
+    "/admin/events": {
+      "get": {
+        "operationId": "AdminController_getAllEvents",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Admin access only."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List all events across all statuses for moderation",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/events/{id}/status": {
+      "patch": {
+        "operationId": "AdminController_updateEventStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerateEventStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Admin access only."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Approve, publish, draft (unpublish), or cancel any event",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/kyc": {
+      "get": {
+        "operationId": "AdminController_listKycSubmissions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Admin access only."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List all organizer KYC submissions",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/kyc/{organizerId}/review": {
+      "patch": {
+        "operationId": "AdminController_reviewKyc",
+        "parameters": [
+          {
+            "name": "organizerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewKycDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Admin access only."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Approve or reject an organizer KYC submission",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/audit-logs": {
+      "get": {
+        "operationId": "AdminController_getAuditLogs",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Admin access only."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retrieve system audit logs for the Admin Audit tab",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/users": {
       "get": {
         "operationId": "UsersController_findAll",
@@ -1355,6 +1632,73 @@
         ]
       }
     },
+    "/organizers/me/kyc": {
+      "post": {
+        "operationId": "OrganizerKycController_submitKyc",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitKycDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only organizers may manage KYC."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Submit or resubmit organizer KYC verification",
+        "tags": [
+          "Organizer KYC"
+        ]
+      },
+      "get": {
+        "operationId": "OrganizerKycController_getMyKyc",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "KYC status object or unsubmitted state."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only organizers may manage KYC."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Fetch current organizer KYC status and submission",
+        "tags": [
+          "Organizer KYC"
+        ]
+      }
+    },
     "/payments/orders/{orderNumber}/checkout": {
       "post": {
         "operationId": "PaymentsController_startPayment",
@@ -1500,6 +1844,70 @@
       }
     },
     "schemas": {
+      "CreateContactDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Chikondi Banda"
+          },
+          "email": {
+            "type": "string",
+            "example": "chikondi@example.com"
+          },
+          "subject": {
+            "type": "string",
+            "example": "Ticket QR issue"
+          },
+          "message": {
+            "type": "string",
+            "example": "I need help retrieving my event pass."
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "subject",
+          "message"
+        ]
+      },
+      "ModerateEventStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "CANCELLED"
+            ],
+            "example": "PUBLISHED"
+          },
+          "reason": {
+            "type": "string",
+            "example": "Approved after policy review"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "ReviewKycDto": {
+        "type": "object",
+        "properties": {
+          "approved": {
+            "type": "boolean",
+            "example": true
+          },
+          "notes": {
+            "type": "string",
+            "example": "Documents verified"
+          }
+        },
+        "required": [
+          "approved"
+        ]
+      },
       "CreateManagedUserDto": {
         "type": "object",
         "properties": {
@@ -2070,6 +2478,35 @@
         },
         "required": [
           "isActive"
+        ]
+      },
+      "SubmitKycDto": {
+        "type": "object",
+        "properties": {
+          "businessName": {
+            "type": "string",
+            "maxLength": 200,
+            "example": "Zomba Live Events Ltd"
+          },
+          "registrationNumber": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "REG-2026-88412"
+          },
+          "documentType": {
+            "type": "string",
+            "maxLength": 50,
+            "example": "NATIONAL_ID"
+          },
+          "documentUrl": {
+            "type": "string",
+            "example": "https://example.com"
+          }
+        },
+        "required": [
+          "businessName",
+          "documentType",
+          "documentUrl"
         ]
       }
     }
