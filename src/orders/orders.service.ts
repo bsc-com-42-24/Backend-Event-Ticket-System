@@ -63,7 +63,7 @@ export class OrdersService {
 
       const eventResult = await client.query(
         `
-        SELECT event_id, status
+        SELECT event_id, status, start_at, end_at
         FROM events
         WHERE event_id = $1
         FOR UPDATE
@@ -75,7 +75,10 @@ export class OrdersService {
         throw new NotFoundException('Event not found');
       }
 
-      if (eventResult.rows[0].status !== 'PUBLISHED') {
+      const event = eventResult.rows[0];
+      const now = new Date();
+
+      if (event.status !== 'PUBLISHED' || now >= new Date(event.start_at) || now >= new Date(event.end_at)) {
         throw new BadRequestException(
           'Tickets are not available for this event',
         );

@@ -1,147 +1,168 @@
-# API documentation
+# API Documentation
 
-The local API base URL is `http://localhost:3000`. Swagger UI is available
-at `http://localhost:3000/api`.
+This backend exposes a NestJS REST API documented in Swagger at `http://localhost:3000/api` when the application is running. The service base URL is `http://localhost:3000`.
 
 ## Authentication
 
-Register with `POST /auth/register`, then sign in with `POST /auth/login`.
-Public registration creates an `ATTENDEE` account. An administrator assigns
-organizer or administrator roles. Organizers create check-in staff accounts
-and assign them to events.
-
-Use the login response token on protected routes:
+Use a JWT bearer token on protected routes.
 
 ```http
 Authorization: Bearer <accessToken>
 ```
 
-Tokens expire after 15 minutes by default. Configure `JWT_EXPIRES_IN` to
-change the lifetime.
+### Public endpoints
 
-| API role | Access |
-| --- | --- |
-| `ATTENDEE` | Browse events, claim tickets, and view personal ticket history |
-| `ORGANIZER` | Manage owned events, ticket types, inventory, and reports |
-| `CHECK_IN_STAFF` | Validate tickets for assigned events |
-| `ADMIN` | Manage users and administer any event |
+- `GET /`
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /events`
+- `GET /events/:id`
+- `GET /events/:id/availability`
+- `GET /events/:id/ticket-types`
+- `POST /contact`
 
-## Main endpoints
+### Authenticated endpoints
 
-| Method and path | Access | Purpose |
-| --- | --- | --- |
-| `POST /auth/register` | Public | Create an attendee account |
-| `POST /auth/login` | Public | Sign in and receive a JWT |
-| `GET /auth/me` | Signed in | Return the current user's details |
-| `GET /users?page=1&limit=20&email=...` | `ADMIN` | Search users |
-| `PATCH /users/{userId}/role` | `ADMIN` | Change another user's role |
-| `GET /events` | Public | Browse upcoming published events |
-| `GET /events/mine` | `ORGANIZER`, `ADMIN` | List managed events |
-| `POST /events` | `ORGANIZER`, `ADMIN` | Create an event and ticket types |
-| `PATCH /events/{eventId}` | Owner, `ADMIN` | Update or publish an event |
-| `DELETE /events/{eventId}` | Owner, `ADMIN` | Cancel an event |
-| `GET /events/{eventId}/availability` | Public | View capacity and available stock |
-| `GET /events/{eventId}/ticket-types` | Public for published events | View active ticket types |
-| `GET /events/{eventId}/sales-summary` | Owner, `ADMIN` | View inventory and warnings |
-| `POST /tickets/purchase` | `ATTENDEE`, `ADMIN` | Claim generated tickets |
-| `GET /tickets/history` | `ATTENDEE`, `ADMIN` | View personal tickets and QR images |
-| `POST /tickets/events/{eventId}/generate` | Owner, `ADMIN` | Generate missing tickets |
-| `GET /tickets/events/{eventId}` | Owner, `ADMIN` | List event tickets |
-| `POST /tickets/validate` | Assigned staff, owner, `ADMIN` | Validate a QR payload or ticket number |
-| `POST /tickets/validate/image` | Assigned staff, owner, `ADMIN` | Validate an uploaded QR image |
-| `GET /tickets/events/{eventId}/check-in-summary` | Owner, `ADMIN` | View check-in progress |
-| `POST /orders` | `ATTENDEE`, `ADMIN` | Create an order and reserve tickets |
-| `GET /orders/mine` | `ATTENDEE`, `ADMIN` | List personal orders |
-| `POST /payments/orders/{orderNumber}/checkout` | Order owner, `ADMIN` | Start PayChangu checkout |
-| `GET /payments/{txRef}/verify` | Payment owner, `ADMIN` | Verify a payment |
-| `POST /payments/paychangu/webhook` | Provider signature | Process a provider notification |
+The token is returned by `POST /auth/login` and contains:
 
-## Create and claim tickets
+- `sub`
+- `email`
+- `role`
 
-Create an event with its ticket types, publish the event, then generate ticket
-records before attendees claim them. For example:
+The token lifetime is controlled by `JWT_EXPIRES_IN` and defaults to `15m`.
+
+## Core endpoints
+
+### Authentication and users
+
+| Method | Route | Role | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/auth/register` | Public | Create an attendee account |
+| `POST` | `/auth/login` | Public | Sign in and receive a JWT |
+| `GET` | `/auth/me` | Any authenticated user | Return current user info |
+| `GET` | `/users` | `ADMIN` | Search and paginate users |
+| `POST` | `/users` | `ADMIN` | Create a managed user |
+| `PATCH` | `/users/:userId/status` | `ADMIN` | Activate or deactivate an account |
+| `DELETE` | `/users/:userId` | `ADMIN` | Disable a user account |
+| `PATCH` | `/users/:userId/role` | `ADMIN` | Change a user role |
+
+### Event and ticket type management
+
+| Method | Route | Role | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/events` | `ORGANIZER`, `ADMIN` | Create an event |
+| `GET` | `/events/mine` | `ORGANIZER`, `ADMIN` | List events managed by the user |
+| `GET` | `/events` | Public | Browse published events |
+| `GET` | `/events/:id` | Public or authenticated | View an event |
+| `PATCH` | `/events/:id` | Owner or `ADMIN` | Update an event |
+| `DELETE` | `/events/:id` | Owner or `ADMIN` | Cancel an event |
+| `GET` | `/events/:id/availability` | Public | Show capacity and stock |
+| `POST` | `/events/images` | `ORGANIZER`, `ADMIN` | Upload event image |
+| `GET` | `/events/:eventId/ticket-types` | Public for published events | List active ticket types |
+| `POST` | `/events/:eventId/ticket-types` | `ORGANIZER`, `ADMIN` | Create a ticket type |
+| `PATCH` | `/events/:eventId/ticket-types/:ticketTypeId` | `ORGANIZER`, `ADMIN` | Update ticket type |
+| `GET` | `/events/:eventId/sales-summary` | `ORGANIZER`, `ADMIN` | Inventory and revenue summary |
+| `GET` | `/events/:eventId/attendance-summary` | `ORGANIZER`, `ADMIN` | Attendance summary |
+
+### Orders, payments, and ticket claims
+
+| Method | Route | Role | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/orders` | `ATTENDEE`, `ADMIN` | Create an order and reserve stock |
+| `GET` | `/orders/mine` | `ATTENDEE`, `ADMIN` | List user orders |
+| `GET` | `/orders/:orderNumber` | `ATTENDEE`, `ADMIN` | View order detail |
+| `POST` | `/tickets/purchase` | `ATTENDEE`, `ADMIN` | Claim generated tickets |
+| `GET` | `/tickets/history` | `ATTENDEE`, `ADMIN` | Show personal ticket history |
+| `POST` | `/tickets/events/:eventId/generate` | `ORGANIZER`, `ADMIN` | Generate missing tickets |
+| `GET` | `/tickets/events/:eventId` | `ORGANIZER`, `ADMIN` | List event tickets |
+| `GET` | `/tickets/:ticketNumber` | `ORGANIZER`, `ADMIN` | Get one ticket |
+| `GET` | `/tickets/:ticketNumber/qr` | `ORGANIZER`, `ADMIN` | Get ticket and QR data |
+| `POST` | `/tickets/validate` | `CHECK_IN_STAFF`, `ORGANIZER`, `ADMIN` | Validate a ticket or QR payload |
+| `POST` | `/tickets/validate/image` | `CHECK_IN_STAFF`, `ORGANIZER`, `ADMIN` | Validate an uploaded QR image |
+| `GET` | `/tickets/events/:eventId/check-in-summary` | `ORGANIZER`, `ADMIN` | View check-in progress |
+| `POST` | `/payments/orders/:orderNumber/checkout` | `ATTENDEE`, `ADMIN` | Start PayChangu checkout |
+| `GET` | `/payments/:txRef/verify` | `ATTENDEE`, `ADMIN` | Verify payment |
+| `POST` | `/payments/paychangu/webhook` | Provider | Receive provider webhook |
+| `GET` | `/payments/paychangu/callback` | Public | Handle provider callback |
+
+### Organizer staff and KYC
+
+| Method | Route | Role | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/organizers/me/staff` | `ORGANIZER` | Add a check-in staff account |
+| `GET` | `/organizers/me/staff` | `ORGANIZER` | List staff accounts |
+| `PUT` | `/organizers/me/staff/:staffId/events` | `ORGANIZER` | Assign events to staff |
+| `PATCH` | `/organizers/me/staff/:staffId/active` | `ORGANIZER` | Activate or deactivate staff |
+| `DELETE` | `/organizers/me/staff/:staffId` | `ORGANIZER` | Remove a staff member |
+| `POST` | `/organizers/me/kyc` | `ORGANIZER` | Submit organizer verification |
+| `GET` | `/organizers/me/kyc` | `ORGANIZER` | Fetch KYC data |
+| `GET` | `/staff/me/events` | `CHECK_IN_STAFF`, `ADMIN` | Show assigned events |
+
+### Admin moderation
+
+| Method | Route | Role | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/admin/events` | `ADMIN` | List events across statuses |
+| `PATCH` | `/admin/events/:id/status` | `ADMIN` | Moderate event status |
+| `GET` | `/admin/kyc` | `ADMIN` | List KYC submissions |
+| `PATCH` | `/admin/kyc/:organizerId/review` | `ADMIN` | Approve or reject KYC |
+| `GET` | `/admin/audit-logs` | `ADMIN` | Read audit logs |
+
+### Support and contact
+
+| Method | Route | Role | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/contact` | Public | Submit a support inquiry |
+
+## Validation and error behavior
+
+The API throws NestJS exceptions. Common responses are:
+
+- `400` for invalid request data or invalid state.
+- `401` for missing or invalid token.
+- `403` for insufficient permissions.
+- `404` for missing resource.
+- `409` for capacity or state conflicts.
+
+A typical validation response from ticket scanning is:
 
 ```json
 {
-  "title": "Community Concert",
-  "description": "An evening of live music.",
-  "venue": "Main Hall",
-  "location": "Blantyre, Malawi",
-  "startAt": "2027-03-10T16:00:00.000Z",
-  "endAt": "2027-03-10T20:00:00.000Z",
-  "capacity": 100,
-  "ticketTypes": [
-    {
-      "name": "General",
-      "price": 0,
-      "currency": "MWK",
-      "quantity": 100,
-      "perOrderLimit": 4
-    }
-  ]
+  "accepted": false,
+  "reason": "NOT_ASSIGNED",
+  "message": "You are not assigned to this event.",
+  "ticketId": null,
+  "eventId": null,
+  "validatedAt": null,
+  "ticket": null,
+  "event": null
 }
 ```
 
-Claim tickets with `POST /tickets/purchase`:
+## Example request
+
+```http
+POST /auth/login
+Content-Type: application/json
+
+{
+  "email": "organizer@example.com",
+  "password": "secret123"
+}
+```
+
+A successful login returns:
 
 ```json
 {
-  "eventId": "12",
-  "ticketTypeId": "3",
-  "quantity": 1
+  "accessToken": "<jwt>",
+  "tokenType": "Bearer"
 }
 ```
 
-The quantity is optional and defaults to `1`; the maximum is `10` and the
-ticket type's per-order limit also applies. Paid tickets require a PayChangu
-`txRef` when payment is enabled. The backend verifies the payment before
-assigning tickets. Free ticket claims do not need a payment reference.
+## Notes
 
-Use `GET /tickets/history` to retrieve ticket details and QR images. Keep
-database IDs as strings; converting a bigint ID to a JavaScript number can
-lose precision.
-
-## Validate tickets
-
-Send exactly one of `qrToken` or `ticketNumber`. An optional `eventId`
-restricts the scan to a specific event.
-
-```json
-{
-  "qrToken": "{\"ticketId\":\"123\",\"token\":\"<ticket-secret>\"}",
-  "eventId": "42"
-}
-```
-
-The API also accepts a QR image at `POST /tickets/validate/image` as
-multipart field `file`; uploads are limited to 5 MB. Check `accepted` in the
-response. HTTP `200` means the scan was processed, not that the ticket was
-accepted. Check-in staff can validate only events assigned by their
-organizer. Possible rejection reasons include `NOT_ASSIGNED`, `NOT_FOUND`,
-`ALREADY_USED`, `CANCELLED`, `WRONG_EVENT`, and `EVENT_CANCELLED`.
-
-## Errors and frontend requests
-
-NestJS returns standard exception responses. Common status codes are `400`
-for invalid input, `401` for missing or invalid authentication, `403` for
-insufficient permissions, `404` for missing resources, and `409` for state or
-capacity conflicts.
-
-```js
-const response = await fetch('http://localhost:3000/events', {
-  headers: { Authorization: `Bearer ${accessToken}` },
-});
-
-if (!response.ok) {
-  const error = await response.json();
-  throw new Error(Array.isArray(error.message)
-    ? error.message.join(', ')
-    : error.message ?? `Request failed (${response.status})`);
-}
-
-const events = await response.json();
-```
-
-Set `CORS_ORIGINS` to a comma-separated list of allowed frontend origins.
-Production requires an explicit allowlist. Keep `.env` and provider secrets
-out of source control.
+- `UserRole.CUSTOMER` maps to the stored string `ATTENDEE`.
+- `UserRole.EVENT_MANAGER` maps to `ORGANIZER`.
+- `UserRole.VALIDATOR` maps to `CHECK_IN_STAFF`.
+- Event and ticket IDs are handled as strings in API routes and then converted internally for database usage.

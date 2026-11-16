@@ -1,137 +1,158 @@
-# Database design
+# Database Design
 
-PostgreSQL is the source of truth. The initial schema is
-[`event_ticket_booking_schema.sql`](../event_ticket_booking_schema.sql);
-TypeORM schema synchronization is disabled. Order/payment tables and the
-ticket-to-order-item reference are introduced by migrations.
+The application stores its main business state in PostgreSQL. The schema is created by the SQL seed file at `event_ticket_booking_schema.sql` and extended by migrations in `src/database/migrations`.
 
-## Entity relationship diagram
+## Primary tables
 
-```mermaid
-erDiagram
-  USERS ||--o{ EVENTS : organizes
-  USERS ||--o{ TICKETS : owns
-  USERS ||--o{ ORDERS : places
-  USERS ||--o{ TICKET_VALIDATIONS : checks
-  VENUES o|--o{ EVENTS : hosts
-  EVENTS ||--o{ TICKET_TYPES : configures
-  EVENTS ||--o{ TICKETS : issues
-  EVENTS ||--o{ ORDERS : receives
-  TICKET_TYPES ||--o{ TICKETS : classifies
-  TICKET_TYPES ||--o{ ORDER_ITEMS : reserves
-  ORDERS ||--|{ ORDER_ITEMS : contains
-  ORDERS ||--o{ PAYMENTS : paid_by
-  ORDER_ITEMS o|--o{ TICKETS : fulfills
-  TICKETS o|--o{ TICKET_VALIDATIONS : scanned_as
+### `users`
 
-  USERS {
-    bigint user_id PK
-    varchar email UK
-    text password_hash
-    varchar role
-    boolean is_active
-  }
-  EVENTS {
-    bigint event_id PK
-    bigint organizer_id FK
-    integer capacity
-    integer tickets_issued
-    varchar status
-    timestamptz start_at
-    timestamptz end_at
-  }
-  TICKET_TYPES {
-    bigint ticket_type_id PK
-    bigint event_id FK
-    numeric price
-    integer quantity_total
-    integer quantity_sold
-    integer quantity_reserved
-  }
-  TICKETS {
-    bigint ticket_id PK
-    bigint event_id FK
-    bigint ticket_type_id FK
-    bigint customer_id FK
-    bigint order_item_id FK
-    uuid qr_token UK
-    varchar ticket_number UK
-    varchar status
-  }
-  ORDERS {
-    bigint order_id PK
-    bigint customer_id FK
-    bigint event_id FK
-    varchar order_number UK
-    numeric total_amount
-    timestamptz expires_at
-    varchar status
-  }
-  ORDER_ITEMS {
-    bigint order_item_id PK
-    bigint order_id FK
-    bigint ticket_type_id FK
-    integer quantity
-    numeric unit_price
-    numeric subtotal
-  }
-  PAYMENTS {
-    bigint payment_id PK
-    bigint order_id FK
-    varchar tx_ref UK
-    numeric amount
-    varchar status
-    timestamptz verified_at
-  }
-  TICKET_VALIDATIONS {
-    bigint validation_id PK
-    bigint ticket_id FK
-    bigint checked_by FK
-    varchar result
-    varchar reason
-    timestamptz scanned_at
-  }
-  VENUES {
-    bigint venue_id PK
-    varchar venue_name
-    text address
-  }
+Stores all system users.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `user_id` | `BIGINT` PK | Generated identity |
+| `full_name` | `VARCHAR(150)` | Person name |
+| `email` | `VARCHAR(255)` | Unique |
+| `password_hash` | `TEXT` | Hashed with bcryptjs |
+| `phone` | `VARCHAR(30)` | Optional |
+| `role` | `VARCHAR(20)` | `ATTENDEE`, `ORGANIZER`, `ADMIN`, `CHECK_IN_STAFF` |
+| `is_active` | `BOOLEAN` | Account active/inactive flag |
+| `created_at` | `TIMESTAMPTZ` | Creation timestamp |
+| `updated_at` | `TIMESTAMPTZ` | Update timestamp |
+
+### `events`
+
+Stores each event.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `event_id` | `BIGINT` PK | Event identity |
+| `organizer_id` | `BIGINT` FK | Event owner |
+| `venue` | `VARCHAR(150)` | Venue name |
+| `location` | `VARCHAR(255)` | Event location |
+| `capacity` | `INTEGER` | Maximum event ticket capacity |
+| `tickets_issued` | `INTEGER` | Count of generated tickets |
+| `status` | `VARCHAR(20)` | `DRAFT`, `PUBLISHED`, `CANCELLED`, `COMPLETED` |
+| `start_at`, `end_at` | `TIMESTAMPTZ` | Event time window |
+| `sales_start_at`, `sales_end_at` | `TIMESTAMPTZ` | Sales window |
+| `published_at`, `cancelled_at` | `TIMESTAMPTZ` | Lifecycle timestamps |
+
+### `ticket_types`
+
+Stores each event ticket category.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `ticket_type_id` | `BIGINT` PK | Ticket type identity |
+| `event_id` | `BIGINT` FK | Parent event |
+| `type_name` | `VARCHAR(100)` | Ticket label |
+| `price` | `NUMERIC(12,2)` | Price in MWK |
+| `currency` | `CHAR(3)` | Default `MWK` |
+| `quantity_total` | `INTEGER` | Total inventory |
+| `quantity_sold` | `INTEGER` | Sold quantity |
+| `quantity_reserved` | `INTEGER` | Reserved pending order quantity |
+| `per_order_limit` | `INTEGER` | Max per purchase |
+| `sales_start_at`, `sales_end_at` | `TIMESTAMPTZ` | Sales window |
+| `is_active` | `BOOLEAN` | Active/inactive flag |
+
+### `tickets`
+
+Stores each issued ticket.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `ticket_id` | `BIGINT` PK | Ticket identity |
+| `ticket_number` | `VARCHAR(50)` | Unique ticket reference |
+| `event_id` | `BIGINT` FK | Event |
+| `ticket_type_id` | `BIGINT` FK | Ticket type |
+| `customer_id` | `BIGINT` FK | Assigned attendee |
+| `qr_token` | `UUID` | Secure QR payload value |
+| `status` | `VARCHAR(20)` | `ISSUED`, `USED`, `CANCELLED`, `REFUNDED` |
+| `issued_at` | `TIMESTAMPTZ` | Issued time |
+| `checked_in_at` | `TIMESTAMPTZ` | Validation timestamp |
+
+### `ticket_validations`
+
+Stores every validation attempt.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `validation_id` | `BIGINT` PK | Validation record |
+| `ticket_id` | `BIGINT` FK | Ticket used in scan |
+| `checked_by` | `BIGINT` FK | Validator user |
+| `attempted_event_id` | `VARCHAR(30)` | Event provided in validation |
+| `result` | `VARCHAR(20)` | `ACCEPTED` or `REJECTED` |
+| `reason` | `VARCHAR(30)` | Validation reason |
+| `scanned_at` | `TIMESTAMPTZ` | Attempt timestamp |
+| `notes` | `TEXT` | Optional notes |
+
+## Supporting tables
+
+### `organizer_staff`
+
+Maps each staff account to its managing organizer.
+
+### `staff_event_assignments`
+
+Maps a check-in staff member to the event(s) they can validate.
+
+### `organizer_kyc`
+
+Stores organizer verification documents.
+
+### `contact_messages`
+
+Stores public contact form submissions.
+
+### `audit_logs`
+
+Stores moderation and administrative actions.
+
+### `orders` and `order_items`
+
+Tracks reservations and customer order details before the final ticket assignment.
+
+### `payments`
+
+Stores payment status and verification data for PayChangu transactions.
+
+## Important relationships
+
+- `users` to `events`: one organizer manages many events.
+- `events` to `ticket_types`: one event has many ticket categories.
+- `ticket_types` to `tickets`: each ticket belongs to one type.
+- `events` to `tickets`: each ticket belongs to one event.
+- `users` to `tickets`: a customer may hold many tickets.
+- `users` to `ticket_validations`: a validator records many attempts.
+- `users` to `organizer_staff`: each organizer manages staff records.
+- `organizer_staff` to `staff_event_assignments`: staff have many assigned events.
+
+## ER overview
+
+```text
+users 1---* events
+users 1---* tickets
+users 1---* organizer_staff
+organizer_staff 1---* staff_event_assignments
+events 1---* ticket_types
+events 1---* tickets
+ticket_types 1---* tickets
+users 1---* ticket_validations
+users 1---* orders
+orders 1---* order_items
+ticket_types 1---* order_items
+orders 1---* payments
 ```
 
-`VENUES` and some event descriptive fields are schema capabilities not
-currently exposed by the event DTOs. Treat the REST DTOs and Swagger document
-as the current API contract.
+## Data integrity rules
 
-## Important constraints and invariants
+The database enforces several checks:
 
-- User email, ticket number, QR token, order number, and payment transaction
-  reference are unique.
-- Event checks enforce `end_at > start_at`, nonnegative capacity and issued
-  count, and `tickets_issued <= capacity`.
-- A ticket type belongs to one event. Its `quantity_sold` and
-  `quantity_reserved` cannot exceed `quantity_total`.
-- Ticket statuses are `ISSUED`, `USED`, `CANCELLED`, or `REFUNDED`.
-- Order statuses are `PENDING`, `PAID`, `CANCELLED`, or `EXPIRED`.
-- Payment statuses are `PENDING`, `SUCCESS`, `FAILED`, or `CANCELLED`.
-- Deleting events with tickets/orders is restricted; cancellation preserves
-  history.
-- Indexes support event discovery, organizer lookup, customer ticket history,
-  unassigned ticket selection, and validation history.
+- Event capacity cannot be below zero.
+- Ticket count cannot exceed event capacity.
+- Ticket type stock cannot be negative.
+- Validation reason must be one of the allowed rejection values.
+- Events cannot end before they start.
+- `tickets_issued <= capacity` is enforced.
 
-## Capacity and lifecycle
-
-Configured availability for one ticket type is
-`quantity_total - quantity_sold - quantity_reserved`. A customer can claim
-only existing, unassigned generated tickets. A ticket-generation transaction
-locks the event and checks that the additional ticket records fit under event
-capacity. Purchase operations lock the relevant inventory rows and update
-ticket ownership and sold/reserved counters transactionally.
-
-An unpaid order reserves quantity until its 15-minute expiry. Successful
-provider verification fulfills tickets and transfers reserved quantity to
-sold quantity. A ticket moves from `ISSUED` to `USED` on its first accepted
-scan. Rejected and accepted scans are represented in `ticket_validations`.
-
-For a new database, initialize the base schema and run all migrations. Existing
-volumes are not reinitialized by PostgreSQL's Docker entrypoint; back them up
-before applying schema changes.
+These checks protect the business logic from invalid states even when application logic is bypassed.
