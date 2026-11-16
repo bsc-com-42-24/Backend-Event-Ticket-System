@@ -1,124 +1,99 @@
-# Ticket Master API flow and endpoint guide
+# Ticket Master API
 
-This guide follows the endpoint groups and route names in Swagger at `/api`.
-Use Swagger's request schemas for exact DTO fields and response shapes.
+This guide describes the main request flows and API routes. Swagger UI at
+`/api` provides the request schemas and response examples.
 
-## 1. End-to-end flow
+## Event and ticket flow
 
-1. An attendee registers with `POST /auth/register`, signs in with
-   `POST /auth/login`, then uses the returned JWT for protected endpoints.
-2. An administrator promotes the account through `PATCH /users/{userId}/role`.
-   The promoted user signs in again to receive a JWT with the new role.
-3. An organizer creates an event and its ticket types with `POST /events`.
-   New events are `DRAFT` by default and are not visible in public discovery.
-4. The organizer publishes the draft using `PATCH /events/{id}` with
-   `{"status":"PUBLISHED"}`. There is no separate publish endpoint.
-5. Before attendees can claim tickets, the organizer calls
-   `POST /tickets/events/{eventId}/generate`. This creates any missing ticket
-   records up to the active ticket types' configured quantities. Repeating
-   the request does not create duplicates.
-6. Attendees discover events with `GET /events`, optionally searching by
-   keyword, location, date range, or availability. They can inspect ticket
-   stock with `GET /events/{id}/availability`.
-7. An attendee claims available free tickets with `POST /tickets/purchase`.
-   The API checks that the event and ticket sales are open, stock is available,
-   and the quantity is within the per-order limit.
-8. The attendee gets ticket details and QR images from `GET /tickets/history`.
-   Check-in staff validate a QR payload, ticket number, or uploaded QR image
-   with the validation endpoints.
-9. Organizers review their tickets and check-in progress. A valid scan changes
-   the ticket to `USED`; the ticket cannot be checked in a second time.
+1. Register an attendee with `POST /auth/register`, then sign in with
+   `POST /auth/login`.
+2. An administrator assigns the organizer role through
+   `PATCH /users/{userId}/role`. The user signs in again to get a token with
+   the updated role.
+3. The organizer creates an event and its ticket types with `POST /events`.
+   New events start as drafts.
+4. Publish the event with `PATCH /events/{eventId}` and
+   `{"status":"PUBLISHED"}`.
+5. Generate ticket records with
+   `POST /tickets/events/{eventId}/generate`. Repeating this request does not
+   create duplicates.
+6. Attendees browse `GET /events` and check stock at
+   `GET /events/{eventId}/availability`.
+7. Claim tickets with `POST /tickets/purchase`. The request may include a
+   quantity from 1 to 10. Paid tickets require a PayChangu transaction
+   reference when payment is enabled; the server verifies the payment before
+   assigning tickets.
+8. View claimed tickets and QR images with `GET /tickets/history`.
+9. Assigned check-in staff submit a QR payload, ticket number, or QR image to
+   the validation endpoint. A valid scan changes the ticket from `ISSUED` to
+   `USED`; another scan is rejected.
+10. Organizers view ticket inventory and check-in progress through the
+    sales-summary and check-in-summary endpoints.
 
-## 2. How a request moves through the API
+## Request path
 
 ```text
-Frontend
-   | JSON, query parameters, bearer JWT, or QR image
-   v
-NestJS controller
-   | DTO validation -> JWT/role guards -> ownership check
-   v
-Service
-   | parameterized SQL / TypeORM queries
-   v
-PostgreSQL
-   | response data (never password hashes)
-   v
-Frontend
+Client
+  -> NestJS controller
+  -> DTO validation and authentication/role checks
+  -> service ownership and business-rule checks
+  -> PostgreSQL
+  -> response to client
 ```
 
-- Input JSON and query strings are checked by the global Nest validation
-  pipe. Unknown JSON fields are rejected.
-- `POST /auth/login` checks the password against its bcrypt hash and returns a
-  short-lived JWT. Send it as `Authorization: Bearer <access-token>`.
-- Guards check the user's role. Organizer actions also check event ownership;
-  an administrator can manage any event.
-- PostgreSQL stores accounts in `users`, events in `events`, ticket prices and
-  limits in `ticket_types`, individual tickets in `tickets`, and scan attempts
-  in `ticket_validations`.
-- Bigint database IDs are returned as strings. Treat IDs as strings in
-  JavaScript; converting them to `Number` can lose precision.
-- TypeORM schema synchronization is off. A new Docker database volume loads
-  the canonical SQL schema at startup. Existing volumes are not
-  automatically reinitialized.
+The global validation pipe rejects unknown request fields. Protected routes
+require `Authorization: Bearer <accessToken>`. Database IDs are returned as
+strings; keep them as strings in JavaScript.
 
-## 3. Roles
+## Roles
 
-| Role | Main access |
+| API role | Access |
 | --- | --- |
-| `ATTENDEE` | Browse events, view public ticket prices, claim free tickets, and see their own ticket history. |
-| `ORGANIZER` | Create and manage their own events, ticket types, inventory, and event reports. |
-| `CHECK_IN_STAFF` | Validate a QR payload or ticket number and check a ticket in. |
-| `ADMIN` | Manage users and roles, and administer any event or ticket. |
+| `ATTENDEE` | Browse events, claim tickets, and view personal ticket history |
+| `ORGANIZER` | Manage owned events, ticket types, inventory, and reports |
+| `CHECK_IN_STAFF` | Validate tickets for events assigned by their organizer |
+| `ADMIN` | Manage users and administer any event |
 
-Public registration creates an attendee account only. An administrator must
-assign `ORGANIZER`, `CHECK_IN_STAFF`, or `ADMIN` through
-`PATCH /users/{userId}/role`. The user must sign in again to get a JWT with
-the updated role.
+Public registration creates attendees only. Administrators assign organizer
+and administrator roles with `PATCH /users/{userId}/role`. Organizers create
+check-in staff accounts and assign events through `/organizers/me/staff`.
+Users must sign in again after a role change.
 
-## 4. Endpoint guide
+## Main endpoints
 
-Interactive request and response schemas are available at `/api`.
+### Authentication and users
 
-### Health
-
-| Method and path | Access | What happens |
+| Method and path | Access | Purpose |
 | --- | --- | --- |
-| `GET /` | Public | Confirms that the API process is responding. |
+| `POST /auth/register` | Public | Create an attendee account |
+| `POST /auth/login` | Public | Sign in and receive a JWT |
+| `GET /auth/me` | Signed in | Return the current user's ID, email, and role |
+| `GET /users?page=1&limit=20&email=...` | `ADMIN` | Search and paginate users |
+| `PATCH /users/{userId}/role` | `ADMIN` | Assign a role to another user |
 
-### Users
+### Events and ticket types
 
-| Method and path | Access | What happens |
+| Method and path | Access | Purpose |
 | --- | --- | --- |
-| `GET /users?page=1&limit=20&email=...` | Admin | Returns a paginated user list. `email` searches by case-insensitive substring. |
-| `PATCH /users/{userId}/role` | Admin | Changes another user's role. That user must sign in again to receive a token with the new role. |
+| `GET /events` | Public | Browse upcoming published events |
+| `GET /events/{eventId}` | Public; drafts are owner/admin only | View event details |
+| `GET /events/mine` | `ORGANIZER`, `ADMIN` | List managed events |
+| `POST /events` | `ORGANIZER`, `ADMIN` | Create an event and ticket types |
+| `PATCH /events/{eventId}` | Owner, `ADMIN` | Update or publish an event |
+| `DELETE /events/{eventId}` | Owner, `ADMIN` | Cancel an event |
+| `GET /events/{eventId}/availability` | Public | View capacity and available stock |
+| `GET /events/{eventId}/ticket-types` | Public for published events | View active ticket types |
+| `POST /events/{eventId}/ticket-types` | Owner, `ADMIN` | Add a ticket type |
+| `PATCH /events/{eventId}/ticket-types/{ticketTypeId}` | Owner, `ADMIN` | Update a ticket type |
+| `GET /events/{eventId}/sales-summary` | Owner, `ADMIN` | View inventory and stock warnings |
+| `GET /events/{eventId}/attendance-summary` | Owner, `ADMIN` | View attendance totals |
 
-### Auth
-
-| Method and path | Access | What happens |
-| --- | --- | --- |
-| `POST /auth/register` | Public | Creates an attendee account from `name`, `email`, and `password`. Elevated roles cannot be self-assigned. |
-| `POST /auth/login` | Public | Checks email and password, then returns an access token and account details. |
-| `GET /auth/me` | Signed in | Returns the authenticated account's ID, email, and role; send the bearer token. |
-
-### Events and discovery
-
-| Method and path | Access | What happens |
-| --- | --- | --- |
-| `POST /events` | Organizer/admin | Creates an event and its ticket types together. The status defaults to `DRAFT`; combined ticket quantities cannot exceed event capacity. |
-| `GET /events` | Public | Lists upcoming published events. `search` matches title, description, venue, or location; optional `location`, `from`, `to`, `availableOnly`, `page`, and `limit` further filter or paginate results. |
-| `GET /events/mine` | Organizer/admin | Lists events managed by the caller, including drafts and cancelled events. Supports pagination, event filters, and `status`. |
-| `GET /events/{id}` | Public; drafts are owner/admin only | Returns event details. Drafts are hidden from callers who cannot manage the event. |
-| `PATCH /events/{id}` | Event owner/admin | Updates event fields. Set `status` to `PUBLISHED` to publish a draft; a published event cannot be moved back to draft. |
-| `DELETE /events/{id}` | Event owner/admin | Cancels the event by changing its status; event and ticket history are retained. |
-| `GET /events/{id}/availability` | Public | Returns capacity, generated tickets, remaining claimable stock by type, sale-open state, and generation/low-stock indicators. |
-
-Example event creation:
+Example event request:
 
 ```json
 {
-  "title": "Product Launch",
-  "description": "A public product launch.",
+  "title": "Community Concert",
+  "description": "An evening of live music.",
   "venue": "Main Hall",
   "location": "Blantyre, Malawi",
   "startAt": "2027-03-10T16:00:00.000Z",
@@ -126,134 +101,77 @@ Example event creation:
   "capacity": 100,
   "ticketTypes": [
     {
-      "name": "Standard",
+      "name": "General",
       "price": 0,
       "currency": "MWK",
-      "quantity": 90,
+      "quantity": 100,
       "perOrderLimit": 4
-    },
-    {
-      "name": "VIP",
-      "price": 25000,
-      "currency": "MWK",
-      "quantity": 10,
-      "perOrderLimit": 2
     }
   ]
 }
 ```
 
-After creation, publish the draft by updating its status:
-
-```http
-PATCH /events/12
-Authorization: Bearer <access-token>
-Content-Type: application/json
-
-{"status":"PUBLISHED"}
-```
-
-The public event list supports keyword browsing, for example:
-
-```http
-GET /events?search=product%20launch&location=Blantyre&page=1&limit=10
-```
-
-The `search` term is matched case-insensitively against the title,
-description, venue, and location. Event list/detail responses include
-`unallocatedCapacity`, the event capacity not yet represented by generated
-ticket records. Availability reports `remainingTickets` across active types
-and a `needsGeneration` flag. `ticketsIssued` counts generated records;
-attendee claims and check-ins are tracked separately.
+Ticket-type quantities cannot exceed event capacity. Event search accepts
+`search`, `location`, `from`, `to`, `availableOnly`, `page`, and `limit`.
+Paginated responses include `data` and `meta`.
 
 ### Tickets and check-in
 
-| Method and path | Access | What happens |
+| Method and path | Access | Purpose |
 | --- | --- | --- |
-| `POST /tickets/purchase` | Attendee/admin | Claims free tickets for `eventId` and `ticketTypeId`. `quantity` defaults to `1`; paid ticket types are rejected because checkout is not configured. |
-| `GET /tickets/history` | Signed-in attendee/admin | Lists the caller's claimed tickets, event details, and QR images. |
-| `POST /tickets/events/{eventId}/generate` | Event owner/admin | Generates only missing ticket records for active ticket types. |
-| `GET /tickets/events/{eventId}` | Event owner/admin | Lists ticket records for an event the caller manages. |
-| `POST /tickets/validate` | Check-in staff/event owner/admin | Validates exactly one QR payload or ticket number, optionally scoped to an event, and returns an admission decision. |
-| `POST /tickets/validate/image` | Check-in staff/event owner/admin | Reads a QR code from multipart field `file` (maximum 5 MB); optional `eventId` prevents cross-event check-in. |
-| `GET /tickets/events/{eventId}/check-in-summary` | Event owner/admin | Shows check-in progress for the managed event. |
-| `GET /tickets/{ticketNumber}/qr` | Event owner/admin | Returns a managed event's ticket details and QR image. |
-| `GET /tickets/{ticketNumber}` | Event owner/admin | Returns a single ticket from an event the caller manages. |
+| `POST /tickets/purchase` | `ATTENDEE`, `ADMIN` | Claim generated tickets; body includes `eventId`, `ticketTypeId`, optional `quantity` and `txRef` |
+| `GET /tickets/history` | `ATTENDEE`, `ADMIN` | View personal tickets and QR images |
+| `POST /tickets/events/{eventId}/generate` | Owner, `ADMIN` | Generate missing ticket records |
+| `GET /tickets/events/{eventId}` | Owner, `ADMIN` | List event tickets |
+| `POST /tickets/validate` | Assigned staff, owner, `ADMIN` | Validate one QR payload or ticket number |
+| `POST /tickets/validate/image` | Assigned staff, owner, `ADMIN` | Validate a QR image (maximum 5 MB) |
+| `GET /tickets/events/{eventId}/check-in-summary` | Owner, `ADMIN` | View check-in progress |
+| `GET /tickets/{ticketNumber}` | Owner, `ADMIN` | View one event ticket |
+| `GET /tickets/{ticketNumber}/qr` | Owner, `ADMIN` | View ticket details and its QR image |
 
-Example free ticket claim:
+Example claim request:
 
-```http
-POST /tickets/purchase
-Authorization: Bearer <access-token>
-Content-Type: application/json
-
-{"eventId":"12","ticketTypeId":"3","quantity":2}
+```json
+{
+  "eventId": "12",
+  "ticketTypeId": "3",
+  "quantity": 2
+}
 ```
 
-The response contains the claimed tickets and a `qrCodeDataUrl` for each one.
-The QR payload binds the ticket ID to a separate secret token. Do not construct
-or alter this payload on the client.
+For paid tickets, include the successful PayChangu `txRef`. The API verifies
+the reference on the server. Do not treat a browser redirect as confirmation
+of payment.
 
-For `POST /tickets/validate`, provide exactly one of `qrToken` or
-`ticketNumber`. An optional `eventId` makes the validator reject a ticket for
-another event. For `POST /tickets/validate/image`, upload the QR image as
-multipart field `file`; an `eventId` is optional.
+Validation accepts exactly one of `qrToken` or `ticketNumber`; `eventId` is
+optional. Responses include `accepted`, `reason`, and a message. HTTP `200`
+means the scan was processed, not that entry was accepted. Possible rejection
+reasons include `NOT_ASSIGNED`, `NOT_FOUND`, `ALREADY_USED`, `CANCELLED`,
+`WRONG_EVENT`, and `EVENT_CANCELLED`.
 
-Validation returns `accepted`, `reason`, `message`, and (if the ticket was
-identified) ticket and event details. An HTTP `200` means validation
-completed, not necessarily that the guest should be admitted. Check
-`accepted`; rejection reasons can include `NOT_FOUND`, `ALREADY_USED`,
-`CANCELLED`, `WRONG_EVENT`, and `EVENT_CANCELLED`.
+## Inventory and security
 
-### Ticket types and monitoring
-
-| Method and path | Access | What happens |
-| --- | --- | --- |
-| `GET /events/{eventId}/ticket-types` | Public for published events | Lists active ticket types, prices, sale windows, and available stock. |
-| `POST /events/{eventId}/ticket-types` | Event owner/admin | Adds a ticket type without exceeding event capacity. |
-| `PATCH /events/{eventId}/ticket-types/{ticketTypeId}` | Event owner/admin | Updates a type; its quantity cannot be lower than sold plus reserved tickets. |
-| `POST /events/{eventId}/ticket-types/{ticketTypeId}/deactivate` | Event owner/admin | Stops new claims for a type while preserving its historical records. |
-| `GET /events/{eventId}/sales-summary` | Event owner/admin | Summarizes sold, reserved, and remaining inventory and warning flags. |
-| `GET /events/{eventId}/attendance-summary` | Event owner/admin | Summarizes attendee claims, check-ins, and guests not yet checked in. |
-
-`NEEDS_GENERATION` means the planned inventory has not all been generated.
-`LOW_STOCK` means 10 or fewer claimable tickets remain. `SOLD_OUT` means the
-configured quantity is already sold or reserved. These are API warnings for
-the frontend to display; the backend does not send email, SMS, or push alerts.
-
-## 5. Limits and security notes
-
-- Passwords are hashed with bcrypt; password hashes are never returned by
-  account endpoints.
-- JWTs expire (15 minutes by default). Keep `JWT_SECRET` private and at least
-  32 characters long. Never put it in frontend code.
-- Elevated roles require administrator assignment. Organizers can only change
-  their own events and ticket types.
-- Capacity and sales checks use database transactions and row locks to
+- Ticket records are generated before customers claim them. Claims do not
+  create additional inventory.
+- Ticket generation and claims use database transactions and row locks to
   prevent overselling.
-- QR payloads contain the ticket ID and a cryptographically random secret.
-  The secret is not returned in ticket history; the QR image is.
-- Each ticket can be checked in once. A repeated scan returns `ALREADY_USED`;
-  every scan attempt is recorded for review.
-- Uploaded QR images are limited to 5 MB and image decoding to 25 megapixels.
-- CORS is restricted to the comma-separated origins in `CORS_ORIGINS`.
-  Configure it for the deployed frontend; CORS is not a replacement for login
-  or role checks.
-- In production, startup requires explicit database host/user, a database
-  password of at least 16 characters, a non-example JWT secret, and configured
-  CORS origins.
-- Do not commit `.env`. The sample credentials in `docker-compose.yml` are for
-  local development only and must be replaced for deployment.
+- Passwords are hashed; password hashes are not returned by the API.
+- JWTs expire after 15 minutes by default. Keep `JWT_SECRET` private and at
+  least 32 characters long.
+- QR payloads contain a ticket ID and a random secret token. The token is not
+  returned as plain text in ticket history.
+- Uploaded QR images are limited to 5 MB and 25 megapixels.
+- Configure `CORS_ORIGINS` as a comma-separated list of frontend origins.
+  CORS does not replace authentication or role checks.
+- Production startup requires database host and user values, a database
+  password of at least 16 characters, a non-example JWT secret, and an
+  explicit CORS allowlist.
+- Do not commit `.env`; the Compose credentials are for local development.
 
-## 6. Payment limitation
+## Payments
 
-Ticket prices and currencies can be configured and shown to the frontend, but
-there is no payment provider, order ledger, payment callback, or refund flow
-in this backend yet. `POST /tickets/purchase` rejects ticket types whose price
-is greater than zero. The sales summary returns
-`revenueByCurrency: null` and `paymentTracking: "NOT_CONFIGURED"` rather than
-inventing revenue.
-
-Before launching paid sales, the team must select and configure a payment
-provider, then add verified payment callbacks and order/refund records. Do not
-mark an order paid based only on a frontend request.
+Paid ticket claims use PayChangu verification before tickets are assigned.
+Configure the provider secret and callback settings on the server. The
+separate orders workflow supports reservations, checkout, payment verification,
+and provider callbacks. Sales summaries report payment tracking as
+`NOT_CONFIGURED` rather than estimating revenue from ticket counts.

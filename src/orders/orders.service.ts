@@ -499,7 +499,8 @@ export class OrdersService {
           `
           UPDATE tickets
           SET customer_id = $1,
-              order_item_id = $2
+              order_item_id = $2,
+              purchased_at = NOW()
           WHERE ticket_id = ANY($3::bigint[])
           `,
           [

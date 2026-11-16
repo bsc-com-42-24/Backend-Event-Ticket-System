@@ -2,10 +2,11 @@
 
 ## Validate and check in a ticket
 
-`POST /tickets/validate` requires a bearer token. Check-in staff and
-administrators can validate any ticket. An event manager can validate tickets
-only for events they manage. A successful decision checks the ticket in
-immediately; this endpoint is not a read-only preview.
+`POST /tickets/validate` requires a bearer token. Administrators can validate
+any ticket. Event managers can validate tickets for events they manage.
+Check-in staff can validate tickets only for events assigned by their
+organizer. A successful decision checks the ticket in immediately; this
+endpoint is not a read-only preview.
 
 Send exactly one of `qrToken` or `ticketNumber`. The QR's decoded text is JSON
 with a ticket ID and a secret token:
@@ -46,8 +47,9 @@ Only an administrator can use:
 - `PATCH /users/{userId}/role` to assign a role.
 
 An administrator cannot change their own role. Public registration creates
-attendees only. Users must sign in again after a role change for the updated
-role to appear in their JWT.
+attendees only. Organizers create check-in staff accounts and manage their
+event assignments through `/organizers/me/staff`. Users must sign in again
+after a role change for the updated role to appear in their JWT.
 
 For route tables and frontend examples, see
 [the system flow and API guide](./PROJECT_FLOW_AND_API.md).

@@ -38,4 +38,13 @@ export const environmentValidationSchema = Joi.object({
       'http://localhost:5173,http://localhost:3001,http://localhost:4200',
     ),
   }),
+  PAYCHANGU_SECRET_KEY: Joi.string().allow('').default(''),
+  PAYCHANGU_WEBHOOK_SECRET: Joi.string().allow('').default(''),
+  PAYCHANGU_CALLBACK_URL: Joi.string().allow('').default(''),
+  PAYCHANGU_RETURN_URL: Joi.string().allow('').default(''),
+  PAYCHANGU_API_URL: Joi.string().uri().allow('').default(''),
+  PURCHASE_REQUIRES_PAYMENT: Joi.string()
+    .valid('true', 'false')
+    .allow('')
+    .default(''),
 });

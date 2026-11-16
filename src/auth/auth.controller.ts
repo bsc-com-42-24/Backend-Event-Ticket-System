@@ -21,7 +21,6 @@ export class AuthController {
   login(@Body() input: LoginDto): Promise<AuthResponse> {
     return this.authService.login(input);
   }
-
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

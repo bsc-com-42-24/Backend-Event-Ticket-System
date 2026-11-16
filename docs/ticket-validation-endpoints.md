@@ -15,4 +15,6 @@ Quick reference:
 
 Both validation endpoints require authentication. The response has HTTP `200`
 for a processed scan, so the client must check `accepted`. An accepted scan
-changes the ticket to `USED`; a second scan is rejected.
+changes the ticket to `USED`; a second scan is rejected. Check-in staff must
+be assigned to the ticket's event by its organizer. Otherwise the response
+includes `NOT_ASSIGNED` and no ticket details.

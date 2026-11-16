@@ -50,12 +50,15 @@ export class TicketsController {
   @HttpCode(201)
   @Roles(UserRole.CUSTOMER, UserRole.ADMIN)
   @ApiOperation({
-    summary: 'Claim free tickets; paid checkout is not yet available',
+    summary: 'Claim generated tickets after any required payment is verified',
   })
-  @ApiBadRequestResponse({ description: 'The ticket quantity is invalid.' })
+  @ApiBadRequestResponse({
+    description:
+      'The quantity, sales window, payment reference, or ticket type is invalid.',
+  })
   @ApiConflictResponse({
     description:
-      'Sales are closed, the type is sold out, the per-order limit is exceeded, or paid checkout is unavailable.',
+      'Sales are closed, stock is insufficient, the per-order limit is exceeded, or required payment is missing.',
   })
   @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
   @ApiForbiddenResponse({
@@ -71,6 +74,7 @@ export class TicketsController {
       body.eventId,
       body.ticketTypeId,
       body.quantity ?? 1,
+      body.txRef,
     );
   }
 

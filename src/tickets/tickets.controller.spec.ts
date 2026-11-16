@@ -31,7 +31,13 @@ describe('TicketsController', () => {
         user,
       ),
     ).resolves.toEqual({ quantity: 2 });
-    expect(service.purchaseTicket).toHaveBeenCalledWith('5', '7', '3', 2);
+    expect(service.purchaseTicket).toHaveBeenCalledWith(
+      '5',
+      '7',
+      '3',
+      2,
+      undefined,
+    );
   });
 
   it('defaults the ticket quantity to one', () => {
@@ -39,7 +45,13 @@ describe('TicketsController', () => {
       { eventId: '7', ticketTypeId: '3' },
       { userId: '5' } as any,
     );
-    expect(service.purchaseTicket).toHaveBeenCalledWith('5', '7', '3', 1);
+    expect(service.purchaseTicket).toHaveBeenCalledWith(
+      '5',
+      '7',
+      '3',
+      1,
+      undefined,
+    );
   });
 
   it('passes QR payload and validator identity to ticket validation', () => {

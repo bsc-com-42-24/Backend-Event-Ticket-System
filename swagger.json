@@ -1,0 +1,2077 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/users": {
+      "get": {
+        "operationId": "UsersController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "email",
+            "required": false,
+            "in": "query",
+            "description": "Case-insensitive substring to search in email addresses.",
+            "schema": {
+              "maxLength": 255,
+              "example": "example.com",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of users."
+          },
+          "400": {
+            "description": "Pagination parameters are invalid."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only administrators may list users."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List users with pagination and email search",
+        "tags": [
+          "Users"
+        ]
+      },
+      "post": {
+        "operationId": "UsersController_createManagedUser",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateManagedUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/{userId}/status": {
+      "patch": {
+        "operationId": "UsersController_setAccountStatus",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/{userId}": {
+      "delete": {
+        "operationId": "UsersController_disableAccount",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/{userId}/role": {
+      "patch": {
+        "operationId": "UsersController_updateRole",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "description": "Positive integer user ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The user's role was updated."
+          },
+          "400": {
+            "description": "The user ID or requested role is invalid."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only administrators may change roles; self-role changes are forbidden."
+          },
+          "404": {
+            "description": "The target user does not exist."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change another user's role",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/events/images": {
+      "post": {
+        "operationId": "EventImagesController_upload",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Upload an event image (JPG, PNG or WEBP, up to 5 MB)",
+        "tags": [
+          "Events"
+        ]
+      }
+    },
+    "/events": {
+      "post": {
+        "operationId": "EventsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create an event (starts as DRAFT)",
+        "tags": [
+          "Events"
+        ]
+      },
+      "get": {
+        "operationId": "EventsController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "location",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "availableOnly",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Browse published events (public)",
+        "tags": [
+          "Events"
+        ]
+      }
+    },
+    "/events/mine": {
+      "get": {
+        "operationId": "EventsController_findMine",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "PUBLISHED",
+                "CANCELLED"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "location",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "availableOnly",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List events I manage (all statuses)",
+        "tags": [
+          "Events"
+        ]
+      }
+    },
+    "/events/{id}": {
+      "get": {
+        "operationId": "EventsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get event details (drafts are visible to the owner/admin only)",
+        "tags": [
+          "Events"
+        ]
+      },
+      "patch": {
+        "operationId": "EventsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update an event (owner/admin)",
+        "tags": [
+          "Events"
+        ]
+      }
+    },
+    "/events/{id}/availability": {
+      "get": {
+        "operationId": "CapacityController_availability",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Capacity, tickets issued and remaining availability (public)",
+        "tags": [
+          "Capacity"
+        ]
+      }
+    },
+    "/tickets/purchase": {
+      "post": {
+        "operationId": "TicketsController_purchaseTicket",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseTicketDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid ids, sales not open, or tickets sold out."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only customers and administrators may buy tickets."
+          },
+          "404": {
+            "description": "The ticket type or event is unavailable."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Buy a ticket of a ticket type (claims a generated ticket)",
+        "tags": [
+          "Tickets"
+        ]
+      }
+    },
+    "/tickets/mine": {
+      "get": {
+        "operationId": "TicketsController_getMyTickets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only customers and administrators may view their tickets."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get my tickets with event details and QR code images",
+        "tags": [
+          "Tickets"
+        ]
+      }
+    },
+    "/tickets/events/{eventId}/generate": {
+      "post": {
+        "operationId": "TicketsController_generateTickets",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tickets created. Calling it again only creates tickets that are still missing."
+          },
+          "400": {
+            "description": "The event ID is invalid."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only organizers and administrators may generate tickets."
+          },
+          "404": {
+            "description": "The event does not exist or belongs to another organizer."
+          },
+          "409": {
+            "description": "The event is cancelled/completed, has no active ticket types, or would exceed its capacity."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Generate the tickets for an event from its capacity and ticket types",
+        "tags": [
+          "Tickets"
+        ]
+      }
+    },
+    "/tickets/events/{eventId}": {
+      "get": {
+        "operationId": "TicketsController_findByEvent",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The event does not exist or belongs to another organizer."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List all tickets generated for an event",
+        "tags": [
+          "Tickets"
+        ]
+      }
+    },
+    "/tickets/validate": {
+      "post": {
+        "operationId": "TicketsController_validateTicket",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateTicketDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Returns accepted=true or accepted=false with a specific rejection reason (including NOT_ASSIGNED when check-in staff scan a ticket of an event they are not assigned to), plus a details object (ticket number, type, event, customer) when the ticket exists and the scanner may see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketValidationResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The QR token or event ID is invalid."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only check-in staff and administrators may validate tickets."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Validate a ticket QR token for event entry (returns the ticket details)",
+        "tags": [
+          "Tickets"
+        ]
+      }
+    },
+    "/tickets/{ticketNumber}": {
+      "get": {
+        "operationId": "TicketsController_getTicket",
+        "parameters": [
+          {
+            "name": "ticketNumber",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ticket not found."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one ticket of one of my events",
+        "tags": [
+          "Tickets"
+        ]
+      }
+    },
+    "/tickets/{ticketNumber}/qr": {
+      "get": {
+        "operationId": "TicketsController_getTicketQrCode",
+        "parameters": [
+          {
+            "name": "ticketNumber",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "404": {
+            "description": "Ticket not found."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a ticket with its QR code (PNG data URL)",
+        "tags": [
+          "Tickets"
+        ]
+      }
+    },
+    "/events/{eventId}/ticket-types": {
+      "get": {
+        "operationId": "TicketTypesController_list",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "12",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List active ticket types and prices for a published event",
+        "tags": [
+          "Ticket Types & Monitoring"
+        ]
+      },
+      "post": {
+        "operationId": "TicketTypesController_create",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "12",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTicketTypeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a ticket type for an event owned by the manager",
+        "tags": [
+          "Ticket Types & Monitoring"
+        ]
+      }
+    },
+    "/events/{eventId}/ticket-types/{ticketTypeId}": {
+      "patch": {
+        "operationId": "TicketTypesController_update",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "12",
+              "type": "string"
+            }
+          },
+          {
+            "name": "ticketTypeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "3",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTicketTypeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update ticket type details, stock or active status",
+        "tags": [
+          "Ticket Types & Monitoring"
+        ]
+      }
+    },
+    "/events/{eventId}/sales-summary": {
+      "get": {
+        "operationId": "TicketTypesController_salesSummary",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "12",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get sold, reserved, remaining inventory and PAID-order revenue",
+        "tags": [
+          "Ticket Types & Monitoring"
+        ]
+      }
+    },
+    "/events/{eventId}/attendance-summary": {
+      "get": {
+        "operationId": "TicketTypesController_attendanceSummary",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "12",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get issued, checked-in and not-checked-in ticket counts",
+        "tags": [
+          "Ticket Types & Monitoring"
+        ]
+      }
+    },
+    "/orders": {
+      "post": {
+        "operationId": "OrdersController_createOrder",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create an order and reserve tickets",
+        "tags": [
+          "Orders"
+        ]
+      }
+    },
+    "/orders/mine": {
+      "get": {
+        "operationId": "OrdersController_getMyOrders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get my orders",
+        "tags": [
+          "Orders"
+        ]
+      }
+    },
+    "/orders/{orderNumber}": {
+      "get": {
+        "operationId": "OrdersController_getOrder",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get an order by order number",
+        "tags": [
+          "Orders"
+        ]
+      }
+    },
+    "/organizers/me/staff": {
+      "post": {
+        "operationId": "OrganizersController_createStaff",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStaffDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid name, email or password."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only organizers may manage staff."
+          },
+          "409": {
+            "description": "Email is already registered."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a check-in staff account",
+        "tags": [
+          "Organizer staff"
+        ]
+      },
+      "get": {
+        "operationId": "OrganizersController_listStaff",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only organizers may manage staff."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the check-in staff I created, with their assigned events",
+        "tags": [
+          "Organizer staff"
+        ]
+      }
+    },
+    "/organizers/me/staff/{staffId}/events": {
+      "put": {
+        "description": "Replaces the staff member’s assignments with the given list of your own events.",
+        "operationId": "OrganizersController_assignEvents",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignStaffEventsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The staff member with the new assignments."
+          },
+          "400": {
+            "description": "Invalid ids, or an event is not one of your events."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only organizers may manage staff."
+          },
+          "404": {
+            "description": "Staff member not found."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set the events a staff member may validate tickets for",
+        "tags": [
+          "Organizer staff"
+        ]
+      }
+    },
+    "/organizers/me/staff/{staffId}/active": {
+      "patch": {
+        "operationId": "OrganizersController_setActive",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStaffActiveDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated staff member."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only organizers may manage staff."
+          },
+          "404": {
+            "description": "Staff member not found."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Activate or deactivate a staff account",
+        "tags": [
+          "Organizer staff"
+        ]
+      }
+    },
+    "/organizers/me/staff/{staffId}": {
+      "delete": {
+        "description": "Deletes their assignments and ownership record and disables the account. Tickets, orders and past validation history are kept.",
+        "operationId": "OrganizersController_removeStaff",
+        "parameters": [
+          {
+            "name": "staffId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Staff member removed."
+          },
+          "401": {
+            "description": "A valid bearer token is required."
+          },
+          "403": {
+            "description": "Only organizers may manage staff."
+          },
+          "404": {
+            "description": "Staff member not found."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove a staff member",
+        "tags": [
+          "Organizer staff"
+        ]
+      }
+    },
+    "/payments/orders/{orderNumber}/checkout": {
+      "post": {
+        "operationId": "PaymentsController_startPayment",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start PayChangu checkout for an order",
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/payments/{txRef}/verify": {
+      "get": {
+        "operationId": "PaymentsController_verifyPayment",
+        "parameters": [
+          {
+            "name": "txRef",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Verify a PayChangu payment",
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/payments/paychangu/webhook": {
+      "post": {
+        "operationId": "PaymentsController_webhook",
+        "parameters": [
+          {
+            "name": "signature",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Receive PayChangu webhook notifications",
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/payments/paychangu/callback": {
+      "get": {
+        "operationId": "PaymentsController_callback",
+        "parameters": [
+          {
+            "name": "tx_ref",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "PayChangu customer return callback",
+        "tags": [
+          "Payments"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Ticket Master API",
+    "description": "",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "CreateManagedUserDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 150
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 72
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ATTENDEE",
+              "ORGANIZER",
+              "CHECK_IN_STAFF",
+              "ADMIN"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "password",
+          "role"
+        ]
+      },
+      "UpdateUserRoleDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "enum": [
+              "ATTENDEE",
+              "ORGANIZER",
+              "CHECK_IN_STAFF",
+              "ADMIN"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 72
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ATTENDEE",
+              "ORGANIZER"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "password"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 72
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "CreateTicketTypeDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Early Bird"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000,
+            "example": "Limited early access tickets."
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0,
+            "example": 25.5
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3,
+            "pattern": "^[A-Za-z]{3}$",
+            "example": "MWK"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000,
+            "example": 100
+          },
+          "perOrderLimit": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000,
+            "example": 4,
+            "default": 10
+          },
+          "salesStartAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-01T08:00:00.000Z"
+          },
+          "salesEndAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-15T18:00:00.000Z"
+          }
+        },
+        "required": [
+          "name",
+          "price",
+          "currency",
+          "quantity"
+        ]
+      },
+      "CreateEventDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "imageUrl": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^(https?:\\/\\/\\S+|\\/(uploads|images\\/events)\\/[\\w.-]+)$"
+          },
+          "venue": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "location": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "startAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "capacity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "ticketTypes": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateTicketTypeDto"
+            }
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "venue",
+          "location",
+          "startAt",
+          "endAt",
+          "capacity",
+          "ticketTypes"
+        ]
+      },
+      "UpdateEventDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "imageUrl": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^(https?:\\/\\/\\S+|\\/(uploads|images\\/events)\\/[\\w.-]+)$"
+          },
+          "venue": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "location": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "startAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "capacity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "ticketTypes": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateTicketTypeDto"
+            }
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "CANCELLED"
+            ],
+            "type": "string",
+            "description": "Change the event status"
+          }
+        }
+      },
+      "PurchaseTicketDto": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "example": "12"
+          },
+          "ticketTypeId": {
+            "type": "string",
+            "example": "3"
+          },
+          "txRef": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9-]{8,64}$",
+            "example": "TM-LX1Y2Z3-ABCD1234",
+            "description": "PayChangu tx_ref of the successful payment for this ticket. Required unless PURCHASE_REQUIRES_PAYMENT=false."
+          }
+        },
+        "required": [
+          "eventId",
+          "ticketTypeId"
+        ]
+      },
+      "ValidateTicketDto": {
+        "type": "object",
+        "properties": {
+          "qrToken": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The secret UUID encoded in the ticket QR code."
+          },
+          "eventId": {
+            "type": "string",
+            "maxLength": 30,
+            "description": "Event being checked in, used to reject tickets for another event.",
+            "example": "42"
+          }
+        },
+        "required": [
+          "qrToken"
+        ]
+      },
+      "TicketValidationResponseDto": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "description": "Whether the ticket was accepted for entry."
+          },
+          "reason": {
+            "nullable": true,
+            "enum": [
+              "NOT_FOUND",
+              "ALREADY_USED",
+              "CANCELLED",
+              "WRONG_EVENT",
+              "EVENT_CANCELLED",
+              "NOT_ASSIGNED"
+            ],
+            "type": "string",
+            "description": "Rejection reason, or null for an accepted ticket."
+          },
+          "ticketId": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventId": {
+            "type": "string",
+            "nullable": true
+          },
+          "validatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "accepted",
+          "reason",
+          "ticketId",
+          "eventId",
+          "validatedAt"
+        ]
+      },
+      "Ticket": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ticketNumber": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "ticketTypeId": {
+            "type": "string"
+          },
+          "customerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "qrToken": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ISSUED",
+              "USED",
+              "CANCELLED",
+              "REFUNDED"
+            ]
+          },
+          "issuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "checkedInAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "orderItemId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "ticketNumber",
+          "eventId",
+          "ticketTypeId",
+          "customerId",
+          "qrToken",
+          "status",
+          "issuedAt",
+          "checkedInAt",
+          "orderItemId"
+        ]
+      },
+      "UpdateTicketTypeDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Early Bird"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000,
+            "example": "Limited early access tickets."
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0,
+            "example": 25.5
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3,
+            "pattern": "^[A-Za-z]{3}$",
+            "example": "MWK"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000,
+            "example": 100
+          },
+          "perOrderLimit": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000,
+            "example": 4,
+            "default": 10
+          },
+          "salesStartAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-01T08:00:00.000Z"
+          },
+          "salesEndAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-15T18:00:00.000Z"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateOrderItemDto": {
+        "type": "object",
+        "properties": {
+          "ticketTypeId": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "ticketTypeId",
+          "quantity"
+        ]
+      },
+      "CreateOrderDto": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "items": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateOrderItemDto"
+            }
+          }
+        },
+        "required": [
+          "eventId",
+          "items"
+        ]
+      },
+      "CreateStaffDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 150,
+            "example": "Chikondi Banda"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "format": "email",
+            "example": "gate1.staff@example.com"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 72,
+            "description": "Initial password the staff member signs in with."
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "password"
+        ]
+      },
+      "AssignStaffEventsDto": {
+        "type": "object",
+        "properties": {
+          "eventIds": {
+            "uniqueItems": true,
+            "maxItems": 200,
+            "description": "The complete list of your events this staff member may check tickets in for. It replaces the previous assignment; send an empty list to remove all assignments.",
+            "example": [
+              "42",
+              "43"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[1-9]\\d{0,17}$"
+            }
+          }
+        },
+        "required": [
+          "eventIds"
+        ]
+      },
+      "SetStaffActiveDto": {
+        "type": "object",
+        "properties": {
+          "isActive": {
+            "type": "boolean",
+            "description": "false disables the account (no sign-in, existing tokens stop working, no ticket validation); true re-enables it."
+          }
+        },
+        "required": [
+          "isActive"
+        ]
+      }
+    }
+  }
+}

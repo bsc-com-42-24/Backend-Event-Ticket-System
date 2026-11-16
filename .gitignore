@@ -9,3 +9,6 @@ npm-debug.log*
 !.env.example
 *_backup.sql
 *.dump
+.integration-backups/
+.sync-backup/
+uploads/

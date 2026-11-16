@@ -1,4 +1,3 @@
-
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -9,6 +8,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -19,7 +19,7 @@ import { CreateTicketTypeDto } from '../../ticket-types/dto/create-ticket-type.d
 import { EventStatus } from '../enums/event-status.enum';
 
 const Trim = () =>
-  Transform(({ value }) =>
+  Transform(({ value }): unknown =>
     typeof value === 'string' ? value.trim() : value,
   );
 
@@ -35,6 +35,22 @@ export class CreateEventDto {
   @IsNotEmpty()
   @MaxLength(5000)
   description: string;
+
+  @IsOptional()
+  @Trim()
+  @IsString()
+  @MaxLength(100)
+  category?: string;
+
+  @IsOptional()
+  @Trim()
+  @IsString()
+  // an uploaded image (/uploads/..), one of the bundled defaults (/images/events/..) or a web link
+  @Matches(/^(https?:\/\/\S+|\/(uploads|images\/events)\/[\w.-]+)$/, {
+    message: 'imageUrl must be an uploaded image, a default image or an http(s) link',
+  })
+  @MaxLength(2048)
+  imageUrl?: string;
 
   @Trim()
   @IsString()

@@ -32,14 +32,19 @@ Desktop and Node.js 22 first.
    This replaces only `JWT_SECRET` in `.env` with a newly generated 32-byte
    value and does not print it. The copy step only creates `.env` if it does
    not already exist. Run the `node` command again if `.env` still contains
-   the example placeholder. Leave the local database settings as-is unless
-   you changed the Compose configuration.
+   the example placeholder. Compose assigns PostgreSQL an available local
+   host port automatically, avoiding conflicts with ports reserved by Windows.
 
 3. Start PostgreSQL:
 
    ```powershell
    docker compose up -d db
+   $env:DB_PORT = (docker compose port db 5432).Split(':')[-1]
    ```
+
+   Keep this PowerShell terminal open so the API uses the assigned port.
+   If you open another terminal, run the `$env:DB_PORT = ...` command there
+   again before starting the API.
 
    On its first start with a new volume, Docker loads
    [`event_ticket_booking_schema.sql`](./event_ticket_booking_schema.sql).
@@ -57,9 +62,9 @@ Desktop and Node.js 22 first.
 ## Test endpoints in Swagger
 
 1. Open [Swagger UI](http://localhost:3000/api).
-2. Expand `GET /`, click **Try it out**, then **Execute**. A successful
+2. Expand `GET /`, click Try it out, then Execute. A successful
    response is `200` with `Ticket Master API is running`.
-3. Expand `POST /auth/register`, click **Try it out**, and submit:
+3. Expand `POST /auth/register`, click Try it out, and submit:
 
    ```json
    {
@@ -73,11 +78,11 @@ Desktop and Node.js 22 first.
    already registered.
 4. Run `POST /auth/login` with the same email and password. Copy the
    `accessToken` from the response.
-5. Click **Authorize** at the top of Swagger UI, paste only the token string
+5. Click Authorize at the top of Swagger UI, paste only the token string
    (no quotation marks or prefix), then authorize and close the dialog.
 6. Run `GET /auth/me`. It should return the signed-in user's ID, email, and
    `ATTENDEE` role. Run `GET /events` to try a public endpoint.
-7. To sign out in Swagger, click **Authorize** again and clear/revoke the
+7. To sign out in Swagger, click Authorize again and clear/revoke the
    token.
 
 Self-registration only creates attendees. Organizer/admin operations (such as
@@ -100,4 +105,4 @@ is hosted on another port or domain.
 
 Read [the system flow and frontend API guide](./docs/PROJECT_FLOW_AND_API.md)
 for the end-to-end flow, roles, data storage, security rules, endpoint
-examples, inventory limits, and known payment limitation.
+examples, inventory limits, and payment verification requirements.

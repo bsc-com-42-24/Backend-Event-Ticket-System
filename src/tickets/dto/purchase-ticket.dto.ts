@@ -1,8 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsInt,
   IsNumberString,
   IsOptional,
+  IsString,
   Matches,
   Max,
   MaxLength,
@@ -26,6 +27,19 @@ export class PurchaseTicketDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(1000)
+  @Max(10)
   quantity?: number;
+
+  @ApiPropertyOptional({
+    example: 'TM-LX1Y2Z3-ABCD1234',
+    description:
+      'PayChangu tx_ref for paid tickets when payment is required by server configuration.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^[A-Za-z0-9-]{8,64}$/, {
+    message: 'txRef is not a valid payment reference',
+  })
+  txRef?: string;
 }

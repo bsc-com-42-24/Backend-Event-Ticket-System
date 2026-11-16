@@ -1,9 +1,12 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   Param,
   Patch,
+  Post,
+  Delete,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -26,6 +29,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { UserRole } from './user-role.enum';
 import { ListUsersDto } from './dto/list-users.dto';
+import { CreateManagedUserDto } from './dto/create-managed-user.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { ParseBigIntIdPipe } from './parse-bigint-id.pipe';
 import { UsersService } from './users.service';
@@ -53,6 +57,32 @@ export class UsersController {
   @ApiForbiddenResponse({ description: 'Only administrators may list users.' })
   findAll(@Query() input: ListUsersDto) {
     return this.usersService.findAll(input);
+  }
+
+  @Post()
+  createManagedUser(@Body() input: CreateManagedUserDto) {
+    return this.usersService.createManagedUser(input);
+  }
+
+  @Patch(':userId/status')
+  setAccountStatus(
+    @Param('userId', ParseBigIntIdPipe) userId: string,
+    @Body() input: { isActive: boolean },
+    @CurrentUser() admin: AuthenticatedUser,
+  ) {
+    if (typeof input?.isActive !== 'boolean') {
+      throw new BadRequestException('isActive must be a boolean');
+    }
+    return this.usersService.setAccountStatus(userId, input.isActive, admin.userId);
+  }
+
+  // DELETE performs safe deactivation to preserve ticket/order history.
+  @Delete(':userId')
+  disableAccount(
+    @Param('userId', ParseBigIntIdPipe) userId: string,
+    @CurrentUser() admin: AuthenticatedUser,
+  ) {
+    return this.usersService.setAccountStatus(userId, false, admin.userId);
   }
 
   @Patch(':userId/role')

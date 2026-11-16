@@ -103,7 +103,11 @@ describe('AuthService', () => {
 
   it('authenticates a valid password', async () => {
     const passwordHash = await bcrypt.hash('correct horse battery', 4);
-    usersService.findByEmail.mockResolvedValue({ ...user, passwordHash });
+    usersService.findByEmail.mockResolvedValue({
+      ...user,
+      isActive: true,
+      passwordHash,
+    });
 
     const result = await authService.login({
       email: 'customer@example.com',
@@ -120,6 +124,7 @@ describe('AuthService', () => {
     const eventManager = { ...user, role: UserRole.EVENT_MANAGER };
     usersService.findByEmail.mockResolvedValue({
       ...eventManager,
+      isActive: true,
       passwordHash: await bcrypt.hash('correct horse battery', 4),
     });
 
@@ -145,6 +150,22 @@ describe('AuthService', () => {
       authService.login({
         email: user.email,
         password: 'incorrect password',
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(jwtService.signAsync).not.toHaveBeenCalled();
+  });
+
+  it('rejects a disabled account even with the correct password', async () => {
+    usersService.findByEmail.mockResolvedValue({
+      ...user,
+      isActive: false,
+      passwordHash: await bcrypt.hash('correct horse battery', 4),
+    });
+
+    await expect(
+      authService.login({
+        email: user.email,
+        password: 'correct horse battery',
       }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(jwtService.signAsync).not.toHaveBeenCalled();

@@ -131,7 +131,7 @@ export class EventsController {
   @Patch(':id')
   @ManagerOnly()
   @ApiOperation({
-    summary: 'Update an event or publish a draft by setting status to PUBLISHED',
+    summary: 'Update an event or publish a draft',
   })
   update(
     @Param('id', NumericIdPipe) id: string,

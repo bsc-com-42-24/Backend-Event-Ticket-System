@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { CapacityModule } from './capacity/capacity.module';
 import { environmentValidationSchema } from './config/environment.validation';
 import { OrdersModule } from './orders/orders.module';
+import { OrganizersModule } from './organizers/organizers.module';
 import { PaymentsModule } from './payments/payments.module';
 import { EventsModule } from './events/events.module';
 import { TicketsModule } from './tickets/tickets.module';
@@ -39,6 +40,7 @@ import { UsersModule } from './users/users.module';
     TicketsModule,
     TicketTypesModule,
     OrdersModule,
+    OrganizersModule,
     PaymentsModule,
   ],
 })
