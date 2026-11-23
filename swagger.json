@@ -43,14 +43,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "summary": "Submit a public contact/support message",
@@ -65,7 +58,7 @@
         "parameters": [
           {
             "name": "status",
-            "required": false,
+            "required": true,
             "in": "query",
             "schema": {
               "type": "string"
@@ -74,14 +67,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           },
           "401": {
             "description": "A valid bearer token is required."
@@ -126,14 +112,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           },
           "401": {
             "description": "A valid bearer token is required."
@@ -159,14 +138,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           },
           "401": {
             "description": "A valid bearer token is required."
@@ -211,14 +183,7 @@
         },
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           },
           "401": {
             "description": "A valid bearer token is required."
@@ -241,24 +206,10 @@
     "/admin/audit-logs": {
       "get": {
         "operationId": "AdminController_getAuditLogs",
-        "parameters": [
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {}
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           },
           "401": {
             "description": "A valid bearer token is required."
@@ -309,7 +260,6 @@
             "in": "query",
             "description": "Case-insensitive substring to search in email addresses.",
             "schema": {
-              "maxLength": 255,
               "example": "example.com",
               "type": "string"
             }
@@ -491,14 +441,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -522,14 +465,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "tags": [
@@ -604,73 +540,7 @@
       },
       "get": {
         "operationId": "EventsController_findAll",
-        "parameters": [
-          {
-            "name": "page",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "default": 1,
-              "type": "number"
-            }
-          },
-          {
-            "name": "limit",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 50,
-              "default": 10,
-              "type": "number"
-            }
-          },
-          {
-            "name": "search",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "maxLength": 100,
-              "type": "string"
-            }
-          },
-          {
-            "name": "location",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "maxLength": 100,
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "format": "date-time",
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "format": "date-time",
-              "type": "string"
-            }
-          },
-          {
-            "name": "availableOnly",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
@@ -685,86 +555,7 @@
     "/events/mine": {
       "get": {
         "operationId": "EventsController_findMine",
-        "parameters": [
-          {
-            "name": "status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "DRAFT",
-                "PUBLISHED",
-                "CANCELLED"
-              ]
-            }
-          },
-          {
-            "name": "page",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "default": 1,
-              "type": "number"
-            }
-          },
-          {
-            "name": "limit",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 50,
-              "default": 10,
-              "type": "number"
-            }
-          },
-          {
-            "name": "search",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "maxLength": 100,
-              "type": "string"
-            }
-          },
-          {
-            "name": "location",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "maxLength": 100,
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "format": "date-time",
-              "type": "string"
-            }
-          },
-          {
-            "name": "to",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "format": "date-time",
-              "type": "string"
-            }
-          },
-          {
-            "name": "availableOnly",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
@@ -847,6 +638,45 @@
         ]
       }
     },
+    "/events/{id}/status": {
+      "patch": {
+        "operationId": "EventsController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEventStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change event status (e.g., restore CANCELLED -> DRAFT or PUBLISHED)",
+        "tags": [
+          "Events"
+        ]
+      }
+    },
     "/events/{id}/availability": {
       "get": {
         "operationId": "CapacityController_availability",
@@ -886,9 +716,6 @@
           }
         },
         "responses": {
-          "201": {
-            "description": ""
-          },
           "400": {
             "description": "Invalid ids, sales not open, or tickets sold out."
           },
@@ -918,19 +745,6 @@
         "operationId": "TicketsController_getMyTickets",
         "parameters": [],
         "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object"
-                  }
-                }
-              }
-            }
-          },
           "401": {
             "description": "A valid bearer token is required."
           },
@@ -1007,16 +821,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          },
           "404": {
             "description": "The event does not exist or belongs to another organizer."
           }
@@ -1092,16 +896,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Ticket"
-                }
-              }
-            }
-          },
           "404": {
             "description": "Ticket not found."
           }
@@ -1131,9 +925,6 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": ""
-          },
           "404": {
             "description": "Ticket not found."
           }
@@ -1357,17 +1148,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object"
-                  }
-                }
-              }
-            }
+            "description": ""
           }
         },
         "security": [
@@ -1425,16 +1206,6 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          },
           "400": {
             "description": "Invalid name, email or password."
           },
@@ -1463,17 +1234,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object"
-                  }
-                }
-              }
-            }
+            "description": ""
           },
           "401": {
             "description": "A valid bearer token is required."
@@ -1648,14 +1409,7 @@
         },
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           },
           "401": {
             "description": "A valid bearer token is required."
@@ -1743,14 +1497,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "security": [
@@ -1779,14 +1526,7 @@
         ],
         "responses": {
           "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "summary": "Receive PayChangu webhook notifications",
@@ -1810,14 +1550,7 @@
         ],
         "responses": {
           "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
+            "description": ""
           }
         },
         "summary": "PayChangu customer return callback",
@@ -1910,22 +1643,11 @@
       },
       "CreateManagedUserDto": {
         "type": "object",
+        "properties": {}
+      },
+      "UpdateUserRoleDto": {
+        "type": "object",
         "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 150
-          },
-          "email": {
-            "type": "string",
-            "maxLength": 255,
-            "format": "email"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 10,
-            "maxLength": 72
-          },
           "role": {
             "type": "string",
             "enum": [
@@ -1934,26 +1656,6 @@
               "CHECK_IN_STAFF",
               "ADMIN"
             ]
-          }
-        },
-        "required": [
-          "name",
-          "email",
-          "password",
-          "role"
-        ]
-      },
-      "UpdateUserRoleDto": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "enum": [
-              "ATTENDEE",
-              "ORGANIZER",
-              "CHECK_IN_STAFF",
-              "ADMIN"
-            ],
-            "type": "string"
           }
         },
         "required": [
@@ -1962,229 +1664,47 @@
       },
       "RegisterDto": {
         "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 8,
-            "maxLength": 72
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "ATTENDEE",
-              "ORGANIZER"
-            ]
-          }
-        },
-        "required": [
-          "name",
-          "email",
-          "password"
-        ]
+        "properties": {}
       },
       "LoginDto": {
         "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 72
-          }
-        },
-        "required": [
-          "email",
-          "password"
-        ]
-      },
-      "CreateTicketTypeDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 100,
-            "example": "Early Bird"
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 5000,
-            "example": "Limited early access tickets."
-          },
-          "price": {
-            "type": "number",
-            "minimum": 0,
-            "example": 25.5
-          },
-          "currency": {
-            "type": "string",
-            "minLength": 3,
-            "maxLength": 3,
-            "pattern": "^[A-Za-z]{3}$",
-            "example": "MWK"
-          },
-          "quantity": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1000000,
-            "example": 100
-          },
-          "perOrderLimit": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 1000,
-            "example": 4,
-            "default": 10
-          },
-          "salesStartAt": {
-            "format": "date-time",
-            "type": "string",
-            "example": "2026-11-01T08:00:00.000Z"
-          },
-          "salesEndAt": {
-            "format": "date-time",
-            "type": "string",
-            "example": "2026-11-15T18:00:00.000Z"
-          }
-        },
-        "required": [
-          "name",
-          "price",
-          "currency",
-          "quantity"
-        ]
+        "properties": {}
       },
       "CreateEventDto": {
         "type": "object",
-        "properties": {
-          "title": {
-            "type": "string",
-            "maxLength": 200
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 5000
-          },
-          "category": {
-            "type": "string",
-            "maxLength": 100
-          },
-          "imageUrl": {
-            "type": "string",
-            "maxLength": 2048,
-            "pattern": "^(https?:\\/\\/\\S+|\\/(uploads|images\\/events)\\/[\\w.-]+)$"
-          },
-          "venue": {
-            "type": "string",
-            "maxLength": 150
-          },
-          "location": {
-            "type": "string",
-            "maxLength": 255
-          },
-          "startAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "endAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "capacity": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 1000000
-          },
-          "ticketTypes": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CreateTicketTypeDto"
-            }
-          }
-        },
-        "required": [
-          "title",
-          "description",
-          "venue",
-          "location",
-          "startAt",
-          "endAt",
-          "capacity",
-          "ticketTypes"
-        ]
+        "properties": {}
       },
       "UpdateEventDto": {
         "type": "object",
         "properties": {
-          "title": {
-            "type": "string",
-            "maxLength": 200
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 5000
-          },
-          "category": {
-            "type": "string",
-            "maxLength": 100
-          },
-          "imageUrl": {
-            "type": "string",
-            "maxLength": 2048,
-            "pattern": "^(https?:\\/\\/\\S+|\\/(uploads|images\\/events)\\/[\\w.-]+)$"
-          },
-          "venue": {
-            "type": "string",
-            "maxLength": 150
-          },
-          "location": {
-            "type": "string",
-            "maxLength": 255
-          },
-          "startAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "endAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "capacity": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 1000000
-          },
-          "ticketTypes": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CreateTicketTypeDto"
-            }
-          },
           "status": {
+            "type": "string",
             "enum": [
               "DRAFT",
               "PUBLISHED",
               "CANCELLED"
             ],
-            "type": "string",
             "description": "Change the event status"
           }
         }
+      },
+      "UpdateEventStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "CANCELLED"
+            ],
+            "example": "DRAFT",
+            "description": "Target status (e.g., restore CANCELLED -> DRAFT or PUBLISHED)"
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "PurchaseTicketDto": {
         "type": "object",
@@ -2199,7 +1719,6 @@
           },
           "txRef": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9-]{8,64}$",
             "example": "TM-LX1Y2Z3-ABCD1234",
             "description": "PayChangu tx_ref of the successful payment for this ticket. Required unless PURCHASE_REQUIRES_PAYMENT=false."
           }
@@ -2214,12 +1733,11 @@
         "properties": {
           "qrToken": {
             "type": "string",
-            "format": "uuid",
-            "description": "The secret UUID encoded in the ticket QR code."
+            "description": "The secret UUID encoded in the ticket QR code.",
+            "format": "uuid"
           },
           "eventId": {
             "type": "string",
-            "maxLength": 30,
             "description": "Event being checked in, used to reject tickets for another event.",
             "example": "42"
           }
@@ -2236,7 +1754,7 @@
             "description": "Whether the ticket was accepted for entry."
           },
           "reason": {
-            "nullable": true,
+            "type": "string",
             "enum": [
               "NOT_FOUND",
               "ALREADY_USED",
@@ -2245,7 +1763,7 @@
               "EVENT_CANCELLED",
               "NOT_ASSIGNED"
             ],
-            "type": "string",
+            "nullable": true,
             "description": "Rejection reason, or null for an accepted ticket."
           },
           "ticketId": {
@@ -2270,100 +1788,37 @@
           "validatedAt"
         ]
       },
-      "Ticket": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "ticketNumber": {
-            "type": "string"
-          },
-          "eventId": {
-            "type": "string"
-          },
-          "ticketTypeId": {
-            "type": "string"
-          },
-          "customerId": {
-            "type": "string",
-            "nullable": true
-          },
-          "qrToken": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "ISSUED",
-              "USED",
-              "CANCELLED",
-              "REFUNDED"
-            ]
-          },
-          "issuedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "checkedInAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "orderItemId": {
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "required": [
-          "id",
-          "ticketNumber",
-          "eventId",
-          "ticketTypeId",
-          "customerId",
-          "qrToken",
-          "status",
-          "issuedAt",
-          "checkedInAt",
-          "orderItemId"
-        ]
-      },
-      "UpdateTicketTypeDto": {
+      "CreateTicketTypeDto": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "maxLength": 100,
             "example": "Early Bird"
           },
           "description": {
             "type": "string",
-            "maxLength": 5000,
             "example": "Limited early access tickets."
           },
           "price": {
             "type": "number",
-            "minimum": 0,
-            "example": 25.5
+            "example": 25.5,
+            "minimum": 0
           },
           "currency": {
             "type": "string",
+            "example": "MWK",
             "minLength": 3,
-            "maxLength": 3,
-            "pattern": "^[A-Za-z]{3}$",
-            "example": "MWK"
+            "maxLength": 3
           },
           "quantity": {
             "type": "number",
-            "minimum": 0,
-            "maximum": 1000000,
-            "example": 100
+            "example": 100,
+            "minimum": 0
           },
           "perOrderLimit": {
             "type": "number",
-            "minimum": 1,
-            "maximum": 1000,
             "example": 4,
+            "minimum": 1,
             "default": 10
           },
           "salesStartAt": {
@@ -2375,69 +1830,82 @@
             "format": "date-time",
             "type": "string",
             "example": "2026-11-15T18:00:00.000Z"
-          },
-          "isActive": {
-            "type": "boolean"
-          }
-        }
-      },
-      "CreateOrderItemDto": {
-        "type": "object",
-        "properties": {
-          "ticketTypeId": {
-            "type": "string",
-            "pattern": "^[0-9]+$"
-          },
-          "quantity": {
-            "type": "number",
-            "minimum": 1
           }
         },
         "required": [
-          "ticketTypeId",
+          "name",
+          "price",
+          "currency",
           "quantity"
         ]
       },
-      "CreateOrderDto": {
+      "UpdateTicketTypeDto": {
         "type": "object",
         "properties": {
-          "eventId": {
+          "name": {
             "type": "string",
-            "pattern": "^[0-9]+$"
+            "example": "Early Bird"
           },
-          "items": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CreateOrderItemDto"
-            }
+          "description": {
+            "type": "string",
+            "example": "Limited early access tickets."
+          },
+          "price": {
+            "type": "number",
+            "example": 25.5,
+            "minimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "example": "MWK",
+            "minLength": 3,
+            "maxLength": 3
+          },
+          "quantity": {
+            "type": "number",
+            "example": 100,
+            "minimum": 0
+          },
+          "perOrderLimit": {
+            "type": "number",
+            "example": 4,
+            "minimum": 1,
+            "default": 10
+          },
+          "salesStartAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-01T08:00:00.000Z"
+          },
+          "salesEndAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-15T18:00:00.000Z"
           }
-        },
-        "required": [
-          "eventId",
-          "items"
-        ]
+        }
+      },
+      "CreateOrderDto": {
+        "type": "object",
+        "properties": {}
       },
       "CreateStaffDto": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
+            "example": "Chikondi Banda",
             "minLength": 2,
-            "maxLength": 150,
-            "example": "Chikondi Banda"
+            "maxLength": 150
           },
           "email": {
             "type": "string",
-            "maxLength": 255,
-            "format": "email",
             "example": "gate1.staff@example.com"
           },
           "password": {
             "type": "string",
+            "description": "Initial password the staff member signs in with.",
             "minLength": 10,
-            "maxLength": 72,
-            "description": "Initial password the staff member signs in with."
+            "maxLength": 72
           }
         },
         "required": [
@@ -2450,8 +1918,6 @@
         "type": "object",
         "properties": {
           "eventIds": {
-            "uniqueItems": true,
-            "maxItems": 200,
             "description": "The complete list of your events this staff member may check tickets in for. It replaces the previous assignment; send an empty list to remove all assignments.",
             "example": [
               "42",
@@ -2459,8 +1925,7 @@
             ],
             "type": "array",
             "items": {
-              "type": "string",
-              "pattern": "^[1-9]\\d{0,17}$"
+              "type": "string"
             }
           }
         },
@@ -2485,17 +1950,14 @@
         "properties": {
           "businessName": {
             "type": "string",
-            "maxLength": 200,
             "example": "Zomba Live Events Ltd"
           },
           "registrationNumber": {
             "type": "string",
-            "maxLength": 100,
             "example": "REG-2026-88412"
           },
           "documentType": {
             "type": "string",
-            "maxLength": 50,
             "example": "NATIONAL_ID"
           },
           "documentUrl": {
