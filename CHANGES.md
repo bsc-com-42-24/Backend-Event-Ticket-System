@@ -31,3 +31,9 @@ running, then:
   cannot validate tickets until an organizer creates/assigns staff.
 - `test/jest-e2e.json` now maps `.js` imports so e2e tests can run.
 - `test/app.e2e-spec.ts` was already failing (AppModule does not register AppController); untouched.
+
+## Event Images, Status Restoration & KYC Moderation Updates
+- **Event Image Persistence:** Mapped `imageUrl` to `events.banner_url` and normalized relative `/uploads/...` paths across `POST /events`, `PATCH /events/:id`, `GET /events`, `GET /events/:id`, and `GET /events/mine`.
+- **Cancelled Event Restoration:** Added `PATCH /events/:id/status` allowing organizers to restore their own `CANCELLED` events back to `DRAFT` or `PUBLISHED`.
+- **Organizer KYC & Security Guard:** Added `POST/GET /organizers/me/kyc`, admin review (`GET/PATCH /admin/kyc`), and database-backed `VerifiedOrganizerGuard`.
+- **Staff, Admin & Contact Endpoints:** Added `GET /staff/me/events`, `GET/PATCH /admin/events`, `GET /admin/audit-logs`, and `POST /contact`.
