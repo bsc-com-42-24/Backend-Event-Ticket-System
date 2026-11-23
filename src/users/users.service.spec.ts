@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserRole } from './user-role.enum';
 import { User } from './user.entity';
 import { UsersService } from './users.service';
@@ -30,13 +34,25 @@ describe('UsersService', () => {
     repository.findOne.mockResolvedValue(target);
     repository.save.mockImplementation(async (user: User) => user);
 
-    const result = await service.updateRole('13', UserRole.VALIDATOR, '12');
+    const result = await service.updateRole('13', UserRole.EVENT_MANAGER, '12');
 
     expect(repository.findOne).toHaveBeenCalledWith({
       where: { id: '13' },
     });
-    expect(result.role).toBe(UserRole.VALIDATOR);
+    expect(result.role).toBe(UserRole.EVENT_MANAGER);
     expect(repository.save).toHaveBeenCalledWith(target);
+  });
+
+  it('requires roster creation instead of assigning the staff role directly', async () => {
+    repository.findOne.mockResolvedValue({
+      id: '13',
+      role: UserRole.CUSTOMER,
+    } as User);
+
+    await expect(
+      service.updateRole('13', UserRole.VALIDATOR, '12'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.save).not.toHaveBeenCalled();
   });
 
   it('returns not found when the target user does not exist', async () => {

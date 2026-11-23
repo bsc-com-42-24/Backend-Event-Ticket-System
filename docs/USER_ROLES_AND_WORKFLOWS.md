@@ -36,6 +36,7 @@ Administrators sign in with `POST /auth/login` and use the returned JWT bearer t
 - `PATCH /admin/kyc/:organizerId/review`
 - `GET /admin/audit-logs`
 - `PATCH /users/:userId/role`
+- `POST /admin/staff` (create staff for an active organizer)
 
 ## 2. Organizer
 
@@ -55,7 +56,9 @@ Organizers may manage only their own events and ticket inventory. They may valid
 
 ### Access
 
-Organizers are assigned the `ORGANIZER` role by an administrator or system owner and authenticate with JWT.
+Organizers can self-register with `POST /auth/register` using
+`"role": "ORGANIZER"` or be created by an administrator. They authenticate
+with JWT; KYC verification is a separate workflow.
 
 ### Key actions
 
@@ -91,7 +94,8 @@ Attendees may access public event APIs and their own personal history. They may 
 
 ### Access
 
-Self-registration creates an `ATTENDEE` account. The user logs in through `POST /auth/login` and calls protected endpoints with a bearer token.
+Self-registration creates an `ATTENDEE` account by default. Attendees log in
+through `POST /auth/login` and call protected endpoints with a bearer token.
 
 ### Key actions
 
@@ -123,7 +127,10 @@ Check-in staff can validate only events in `staff_event_assignments` for their o
 
 ### Access
 
-The organizer creates a staff profile and assigns event access. Staff login through the same authentication flow and use the JWT token for protected validation routes.
+An organizer creates a staff profile on their own roster, or an administrator
+creates one for an active organizer. The organizer assigns event access.
+Staff log in through the same authentication flow and use a JWT for protected
+validation routes.
 
 ### Key actions
 

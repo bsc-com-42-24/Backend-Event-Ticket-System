@@ -55,6 +55,9 @@ describe('OrganizersService', () => {
     };
 
     it('creates a CHECK_IN_STAFF account owned by the organizer, with a hashed password', async () => {
+      manager.query
+        .mockResolvedValueOnce([{ user_id: '5' }])
+        .mockResolvedValueOnce([]);
       manager.save.mockImplementation(async (u: object) => ({ ...u, id: '31' }));
       dataSource.query.mockResolvedValueOnce([staffRow()]);
 
@@ -83,7 +86,17 @@ describe('OrganizersService', () => {
       expect(result).not.toHaveProperty('passwordHash');
     });
 
+    it('does not create staff for a missing, inactive or non-organizer account', async () => {
+      manager.query.mockResolvedValueOnce([]);
+
+      await expect(service.createStaff('5', input)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
     it('maps a duplicate email to 409', async () => {
+      manager.query.mockResolvedValueOnce([{ user_id: '5' }]);
       manager.save.mockRejectedValue(
         Object.assign(new QueryFailedError('q', [], new Error('dup')), {
           driverError: { code: '23505' },

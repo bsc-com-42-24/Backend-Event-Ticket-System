@@ -18,12 +18,10 @@
 		{
 			"label": "Start database container",
 			"type": "shell",
-			"command": "docker",
+			"command": "node",
 			"args": [
-				"compose",
-				"up",
-				"-d",
-				"db"
+				"-e",
+				"const fs=require('fs'),p='.env',sample='replace-this-with-a-random-secret-of-at-least-32-characters';let s=fs.readFileSync(p,'utf8'),m=s.match(/^JWT_SECRET=(.*)$/m);if(m&&m[1].length>=32&&m[1]!==sample){console.log('Existing JWT_SECRET is valid; leaving it unchanged.');process.exit(0)}const secret=require('crypto').randomBytes(32).toString('hex');s=m?s.replace(/^JWT_SECRET=.*$/m,'JWT_SECRET='+secret):s+'\\nJWT_SECRET='+secret+'\\n';fs.writeFileSync(p,s);console.log('Generated a private JWT_SECRET in .env.')"
 			],
 			"isBackground": false,
 			"problemMatcher": []

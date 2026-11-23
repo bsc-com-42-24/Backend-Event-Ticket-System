@@ -140,6 +140,27 @@ describe('AuthService', () => {
     });
   });
 
+  it('registers an organizer with the requested organizer role', async () => {
+    usersService.create.mockImplementation(async (input: Partial<User>) => ({
+      ...user,
+      ...input,
+    }));
+
+    await authService.register({
+      name: 'Event Organizer',
+      email: 'organizer@example.com',
+      password: 'correct horse battery',
+      role: UserRole.EVENT_MANAGER,
+    });
+
+    expect(usersService.create).toHaveBeenCalledWith(
+      expect.objectContaining({ role: UserRole.EVENT_MANAGER }),
+    );
+    expect(jwtService.signAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ role: UserRole.EVENT_MANAGER }),
+    );
+  });
+
   it('rejects an incorrect password for an existing user', async () => {
     usersService.findByEmail.mockResolvedValue({
       ...user,

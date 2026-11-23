@@ -2,9 +2,11 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -27,6 +29,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { EventStatus } from '../events/enums/event-status.enum';
 import { NumericIdPipe } from '../events/pipes/numeric-id.pipe';
 import { UserRole } from '../users/user-role.enum';
+import { OrganizersService } from '../organizers/organizers.service';
+import { CreateAdminStaffDto } from './dto/create-admin-staff.dto';
 
 export class ModerateEventStatusDto {
   @ApiProperty({ enum: EventStatus, example: EventStatus.PUBLISHED })
@@ -58,7 +62,22 @@ export class ReviewKycDto {
 @ApiUnauthorizedResponse({ description: 'A valid bearer token is required.' })
 @ApiForbiddenResponse({ description: 'Admin access only.' })
 export class AdminController {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly organizersService: OrganizersService,
+  ) {}
+
+  @Post('staff')
+  @HttpCode(201)
+  @ApiOperation({
+    summary: 'Create check-in staff for an active organizer',
+    description:
+      'The selected organizer owns the new account and manages its event assignments.',
+  })
+  async createStaff(@Body() input: CreateAdminStaffDto) {
+    const { organizerId, ...staffInput } = input;
+    return this.organizersService.createStaff(organizerId, staffInput);
+  }
 
   @Get('events')
   @ApiOperation({ summary: 'List all events across all statuses for moderation' })

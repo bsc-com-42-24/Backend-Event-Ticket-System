@@ -2,6 +2,14 @@ import 'dotenv/config';
 import { Injectable, OnModuleDestroy, Logger } from '@nestjs/common';
 import { Pool, PoolClient, QueryResult } from 'pg';
 
+function requiredEnvironmentVariable(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} must be set in the environment`);
+  }
+  return value;
+}
+
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
   private readonly logger = new Logger(DatabaseService.name);
@@ -9,11 +17,11 @@ export class DatabaseService implements OnModuleDestroy {
 
   constructor() {
     this.pool = new Pool({
-      host: process.env.DB_HOST ?? 'localhost',
+      host: requiredEnvironmentVariable('DB_HOST'),
       port: Number(process.env.DB_PORT ?? 5432),
-      user: process.env.DB_USERNAME ?? 'postgres',
-      password: process.env.DB_PASSWORD ?? 'postgres',
-      database: process.env.DB_NAME ?? 'ticket_master',
+      user: requiredEnvironmentVariable('DB_USERNAME'),
+      password: requiredEnvironmentVariable('DB_PASSWORD'),
+      database: requiredEnvironmentVariable('DB_NAME'),
       max: 10,
       connectionTimeoutMillis: 5000,
     });

@@ -9,8 +9,11 @@ import {
 } from 'class-validator';
 import { UserRole } from '../../users/user-role.enum';
 
-// Elevated roles are assigned by an administrator after registration.
-export const SELF_REGISTRATION_ROLES = [UserRole.CUSTOMER] as const;
+// Administrators and check-in staff are created through protected workflows.
+export const SELF_REGISTRATION_ROLES = [
+  UserRole.CUSTOMER,
+  UserRole.EVENT_MANAGER,
+] as const;
 
 export class RegisterDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -31,7 +34,7 @@ export class RegisterDto {
 
   @IsOptional()
   @IsIn(SELF_REGISTRATION_ROLES, {
-    message: 'role must be ATTENDEE',
+    message: 'role must be ATTENDEE or ORGANIZER',
   })
   role?: UserRole;
 }

@@ -5,23 +5,30 @@ export const environmentValidationSchema = Joi.object({
     .valid('development', 'test', 'production')
     .default('development'),
   PORT: Joi.number().port().default(3000),
+  API_PUBLISHED_PORT: Joi.number().port().default(3000),
+  DB_PUBLISHED_PORT: Joi.number().port().default(5432),
   DB_HOST: Joi.when('NODE_ENV', {
     is: 'production',
     then: Joi.string().required(),
     otherwise: Joi.string().default('localhost'),
   }),
   DB_PORT: Joi.number().port().default(5432),
-  DB_USERNAME: Joi.when('NODE_ENV', {
-    is: 'production',
-    then: Joi.string().required(),
-    otherwise: Joi.string().default('postgres'),
-  }),
+  DB_USERNAME: Joi.string().required(),
   DB_PASSWORD: Joi.when('NODE_ENV', {
     is: 'production',
-    then: Joi.string().min(16).required(),
-    otherwise: Joi.string().allow('').default('postgres'),
+    then: Joi.string()
+      .min(16)
+      .invalid('replace-with-a-private-password')
+      .required(),
+    otherwise: Joi.string()
+      .min(1)
+      .invalid('replace-with-a-private-password')
+      .required()
+      .messages({
+        'any.invalid': 'replace the DB_PASSWORD example placeholder in .env',
+      }),
   }),
-  DB_NAME: Joi.string().default('ticket_master'),
+  DB_NAME: Joi.string().required(),
   JWT_SECRET: Joi.string()
     .min(32)
     .invalid('replace-this-with-a-random-secret-of-at-least-32-characters')

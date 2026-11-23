@@ -37,7 +37,7 @@ The token lifetime is controlled by `JWT_EXPIRES_IN` and defaults to `15m`.
 
 | Method | Route | Role | Purpose |
 | --- | --- | --- | --- |
-| `POST` | `/auth/register` | Public | Create an attendee account |
+| `POST` | `/auth/register` | Public | Create an attendee (default) or organizer account |
 | `POST` | `/auth/login` | Public | Sign in and receive a JWT |
 | `GET` | `/auth/me` | Any authenticated user | Return current user info |
 | `GET` | `/users` | `ADMIN` | Search and paginate users |
@@ -107,6 +107,7 @@ The token lifetime is controlled by `JWT_EXPIRES_IN` and defaults to `15m`.
 | `GET` | `/admin/kyc` | `ADMIN` | List KYC submissions |
 | `PATCH` | `/admin/kyc/:organizerId/review` | `ADMIN` | Approve or reject KYC |
 | `GET` | `/admin/audit-logs` | `ADMIN` | Read audit logs |
+| `POST` | `/admin/staff` | `ADMIN` | Create check-in staff on an active organizer's roster |
 
 ### Support and contact
 

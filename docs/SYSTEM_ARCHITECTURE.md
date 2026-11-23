@@ -55,8 +55,9 @@ The project uses TypeORM entity auto-loading and a migration-based setup with SQ
 1. A user registers through `POST /auth/register`.
 2. A login request returns a JWT access token.
 3. Protected routes use `JwtAuthGuard` and `RolesGuard`.
-4. The current user is extracted from the token payload.
-5. Roles are checked before business logic runs.
+4. The JWT subject is used to load the account's current active status and role
+   from PostgreSQL; stale or disabled accounts are rejected.
+5. Roles and resource ownership are checked before business logic runs.
 
 The system uses:
 
@@ -107,9 +108,3 @@ flowchart LR
     Admin --> DB
 ```
 
-## Notes on the current implementation
-
-- There is no standalone frontend application in this repository.
-- The API is the primary system boundary.
-- Database integrity rules are enforced in both application logic and SQL constraints.
-- QR validation and payment verification are centralized in service layer checks.

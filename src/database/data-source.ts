@@ -7,13 +7,21 @@ import { OrderItem } from '../orders/entities/item.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { Ticket } from '../tickets/entities/ticket.entity';
 
+function requiredEnvironmentVariable(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} must be set in the environment`);
+  }
+  return value;
+}
+
 export default new DataSource({
   type: 'postgres',
-  host: process.env.DB_HOST ?? 'localhost',
+  host: requiredEnvironmentVariable('DB_HOST'),
   port: Number(process.env.DB_PORT ?? 5432),
-  username: process.env.DB_USERNAME ?? 'postgres',
-  password: process.env.DB_PASSWORD ?? 'postgres',
-  database: process.env.DB_NAME ?? 'ticket_master',
+  username: requiredEnvironmentVariable('DB_USERNAME'),
+  password: requiredEnvironmentVariable('DB_PASSWORD'),
+  database: requiredEnvironmentVariable('DB_NAME'),
   entities: [
     User,
     Order,

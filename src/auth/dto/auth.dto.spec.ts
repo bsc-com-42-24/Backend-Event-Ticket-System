@@ -33,7 +33,7 @@ describe('Authentication DTO validation', () => {
         expect.objectContaining({
           property: 'role',
           constraints: expect.objectContaining({
-            isIn: 'role must be ATTENDEE',
+            isIn: 'role must be ATTENDEE or ORGANIZER',
           }),
         }),
       ]),
@@ -53,7 +53,7 @@ describe('Authentication DTO validation', () => {
     expect(errors.map(({ property }) => property)).toContain('role');
   });
 
-  it('accepts ATTENDEE or no role but rejects ORGANIZER self-assignment', async () => {
+  it('accepts ATTENDEE, ORGANIZER or no role but rejects privileged roles', async () => {
     for (const role of ['ATTENDEE', undefined]) {
       const input = plainToInstance(RegisterDto, {
         name: 'Customer',
@@ -66,13 +66,23 @@ describe('Authentication DTO validation', () => {
     }
 
     const organizerInput = plainToInstance(RegisterDto, {
-      name: 'Customer',
+      name: 'Organizer',
       email: 'customer@example.com',
       password: 'correct horse battery',
       role: 'ORGANIZER',
     });
-    const errors = await validate(organizerInput, strict);
-    expect(errors.map(({ property }) => property)).toContain('role');
+    await expect(validate(organizerInput, strict)).resolves.toHaveLength(0);
+
+    for (const role of ['ADMIN', 'CHECK_IN_STAFF']) {
+      const privilegedInput = plainToInstance(RegisterDto, {
+        name: 'Customer',
+        email: 'customer@example.com',
+        password: 'correct horse battery',
+        role,
+      });
+      const errors = await validate(privilegedInput, strict);
+      expect(errors.map(({ property }) => property)).toContain('role');
+    }
   });
 
   it('rejects invalid registration fields', async () => {

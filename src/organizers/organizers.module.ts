@@ -8,5 +8,6 @@ import { OrganizersService } from './organizers.service';
   imports: [AuthModule],
   controllers: [OrganizersController, OrganizerKycController],
   providers: [OrganizersService],
+  exports: [OrganizersService],
 })
 export class OrganizersModule {}

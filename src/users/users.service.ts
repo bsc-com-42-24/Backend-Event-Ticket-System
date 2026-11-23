@@ -113,12 +113,22 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    if (role === UserRole.VALIDATOR && user.role !== UserRole.VALIDATOR) {
+      throw new BadRequestException(
+        'Create check-in staff through the organizer or admin staff endpoint',
+      );
+    }
 
     user.role = role;
     return this.usersRepository.save(user);
   }
 
   async createManagedUser(input: { name: string; email: string; password: string; role: UserRole }) {
+    if (input.role === UserRole.VALIDATOR) {
+      throw new BadRequestException(
+        'Create check-in staff through the organizer or admin staff endpoint',
+      );
+    }
     const email = this.normalizeEmail(input.email);
     const existing = await this.usersRepository.findOne({ where: { email } });
     if (existing) throw new ConflictException('Email is already registered');

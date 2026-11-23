@@ -63,6 +63,16 @@ export class OrganizersService {
       // One transaction: the account and its ownership record both exist or
       // neither does.
       const staffId = await this.dataSource.transaction(async (manager) => {
+        const organizers: { user_id: string }[] = await manager.query(
+          `SELECT user_id FROM users
+           WHERE user_id = $1 AND role = $2 AND is_active = TRUE
+           FOR SHARE`,
+          [organizerId, UserRole.EVENT_MANAGER],
+        );
+        if (organizers.length === 0) {
+          throw new NotFoundException('Active organizer not found');
+        }
+
         const user = await manager.save(
           manager.create(User, {
             name: input.name.trim(),

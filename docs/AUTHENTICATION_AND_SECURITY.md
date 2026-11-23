@@ -1,112 +1,214 @@
-# Authentication and Security
+# Authentication and role management
 
-## Authentication mechanism
+The API uses bcrypt-hashed passwords and short-lived JWT bearer tokens.
+Authorization uses the user's current role and active status from PostgreSQL
+on each authenticated request, so changing a role or disabling an account
+applies immediately to existing tokens.
 
-The backend uses JWT-based authentication with NestJS Passport.
+## Public registration and login
 
-- Registration is public.
-- Login returns an access token.
-- Protected routes require the token in the `Authorization` header.
-- `JwtAuthGuard` validates the token.
-- `CurrentUser` attaches the authenticated user payload.
+`POST /auth/register` accepts attendees and organizers. If `role` is omitted,
+the account is an attendee. `ADMIN` and `CHECK_IN_STAFF` are rejected; there
+is no public administrator registration.
 
-The token payload contains:
+Attendee request:
 
-- `sub`
-- `email`
-- `role`
+```json
+{
+  "name": "Amina Banda",
+  "email": "amina@example.com",
+  "password": "a-long-unique-password",
+  "role": "ATTENDEE"
+}
+```
 
-## Password handling
+Organizer request:
 
-Passwords are not stored in plaintext.
+```json
+{
+  "name": "Event Organizer",
+  "email": "organizer@example.com",
+  "password": "a-long-unique-password",
+  "role": "ORGANIZER"
+}
+```
 
-- The project uses `bcryptjs`.
-- The password hash is generated before user creation.
-- Login compares the submitted password against the stored hash.
-- The env file validates that `JWT_SECRET` is not left as the example placeholder.
+Successful registration returns HTTP `201`:
 
-## User registration and login
+```json
+{
+  "accessToken": "<signed JWT>",
+  "tokenType": "Bearer"
+}
+```
 
-### Registration
+The response contains no password or password hash. Organizer verification
+status is managed separately through the organizer KYC workflow.
 
-`POST /auth/register` accepts a name, email, and password. Public registration creates an attendee account unless an explicit role is provided.
+`POST /auth/login` uses the same email/password fields and returns the same
+token response. Invalid credentials and disabled accounts return `401`.
+Send the token on protected routes as:
 
-### Login
+```http
+Authorization: Bearer <accessToken>
+```
 
-`POST /auth/login` checks the email and password. If valid and account active, the API returns a JWT and a bearer token type.
+`GET /auth/me` returns the authenticated identity, for example:
 
-If the account is inactive, the login fails with an unauthorized error.
+```json
+{
+  "userId": "123",
+  "email": "organizer@example.com",
+  "role": "ORGANIZER"
+}
+```
 
-## Role-based authorization
+## Check-in staff
 
-Role checks are enforced by `RolesGuard` and custom role decorators.
+An organizer creates a staff account on their own roster:
 
-The role values are:
+`POST /organizers/me/staff` (organizer bearer token)
 
-- `ATTENDEE`
-- `ORGANIZER`
-- `CHECK_IN_STAFF`
-- `ADMIN`
+```json
+{
+  "name": "Gate Staff",
+  "email": "gate@example.com",
+  "password": "a-long-unique-password"
+}
+```
 
-Examples:
+An administrator can create staff for an existing active organizer:
 
-- Only `ATTENDEE` and `ADMIN` may claim tickets.
-- Only `ORGANIZER` and `ADMIN` may create events.
-- Only `CHECK_IN_STAFF`, `ORGANIZER`, and `ADMIN` may validate tickets.
-- Only `ADMIN` may manage users and review KYC submissions.
+`POST /admin/staff` (admin bearer token)
 
-## Protected routes and restrictions
+```json
+{
+  "organizerId": "123",
+  "name": "Gate Staff",
+  "email": "gate@example.com",
+  "password": "a-long-unique-password"
+}
+```
 
-Protected routes are enforced by guards and often combined with role checks. The key protections are:
+Both routes return HTTP `201` with the staff profile, role
+`CHECK_IN_STAFF`, active status, and current event assignments (initially an
+empty list); they never return the password or hash. The staff member then
+uses `POST /auth/login`. Organizers manage their own staff through
+`GET /organizers/me/staff`, `PUT /organizers/me/staff/:staffId/events`,
+`PATCH /organizers/me/staff/:staffId/active`, and
+`DELETE /organizers/me/staff/:staffId`. Staff can validate tickets only for
+assigned events. Admin-created staff are created on the selected organizer's
+roster, rather than as unusable unassigned staff records.
 
-- `JwtAuthGuard` for authentication
-- `RolesGuard` for role enforcement
-- ownership checks for event managers and organizers
-- assignment checks for check-in staff
+Example creation response:
 
-## Input validation
+```json
+{
+  "staffId": "456",
+  "name": "Gate Staff",
+  "email": "gate@example.com",
+  "role": "CHECK_IN_STAFF",
+  "isActive": true,
+  "createdAt": "2026-11-23T12:00:00.000Z",
+  "events": []
+}
+```
 
-The code uses NestJS validation pipes and DTO class validation rules, including:
+`POST /users` is admin-only and can create managed `ATTENDEE`, `ORGANIZER`,
+or `ADMIN` accounts. It cannot create check-in staff; use one of the roster
+routes above. Admin role changes likewise cannot turn a non-staff account
+into unowned check-in staff.
 
-- email format checks
-- required fields
-- numeric bounds for quantities and limits
-- enum checks for roles and statuses
-- file size and file type checks for QR image uploads and event images
+## Administrator bootstrap and recovery
 
-## Payment security
+Bootstrap is a local/operator CLI operation, not an HTTP endpoint. Build the
+application, then provide `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_EMAIL`,
+and `BOOTSTRAP_ADMIN_PASSWORD` in the process environment and run
+`npm run admin:bootstrap`. Use a unique password with at least 12 characters
+(maximum 72 UTF-8 bytes). Never put the password in source control or a
+command-line argument.
 
-Paid ticket flows require a verified PayChangu payment when `purchaseRequiresPayment()` is active. The code verifies the transaction and rejects invalid payment references.
+For a local PowerShell setup after PostgreSQL is running and `.env` is
+configured:
 
-Webhook verification is also implemented by checking the incoming signature against the payment provider secret.
+```powershell
+npm run build
+$env:BOOTSTRAP_ADMIN_NAME = Read-Host "Administrator name"
+$env:BOOTSTRAP_ADMIN_EMAIL = Read-Host "Administrator email"
+$securePassword = Read-Host "Administrator password" -AsSecureString
+$passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+try {
+  $env:BOOTSTRAP_ADMIN_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
+  npm run admin:bootstrap
+} finally {
+  Remove-Item Env:\BOOTSTRAP_ADMIN_PASSWORD -ErrorAction SilentlyContinue
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
+  $securePassword.Dispose()
+}
+```
 
-## QR validation security
+In Docker, first rebuild/start the database and updated API image, then use
+this in the same PowerShell session after setting the three environment
+variables (use the secure password prompt above):
 
-The QR token contains:
+```powershell
+docker compose run --rm -e BOOTSTRAP_ADMIN_NAME -e BOOTSTRAP_ADMIN_EMAIL -e BOOTSTRAP_ADMIN_PASSWORD api npm run admin:bootstrap
+```
 
-- ticket ID
-- secure UUID token
+Do not store the bootstrap password in `.env`; provide it only to the
+one-off bootstrap process from a trusted operator shell or secret manager.
 
-A QR scan is accepted only if:
+After bootstrap, sign in the same way as other users with
+`POST /auth/login`:
 
-- the QR payload matches the stored record
-- the ticket belongs to the correct event
-- the ticket is not already used
-- the ticket is not cancelled or refunded
-- the validator is authorized for the ticket's event
+```json
+{
+  "email": "admin@example.com",
+  "password": "<the password entered at bootstrap>"
+}
+```
 
-## Audit and moderation logging
+The login response is the standard bearer-token response shown above; use it
+to call admin-only routes such as `GET /users`, `POST /admin/staff`, and
+`GET /admin/events`.
 
-Admin actions and KYC review actions write to `audit_logs` to provide traceability for moderation decisions.
+The operation takes a PostgreSQL advisory lock and only proceeds when there
+is no active administrator. It creates a new administrator or promotes and
+resets the password of the matching email account, reactivating that account.
+This supports first-admin setup and recovery when all admin accounts have
+been disabled. If an active administrator exists, the operation refuses to
+run. Only an operator trusted with database access should run it.
 
-## Security notes from the implementation
+## Role boundaries
 
-- Passwords are hashed and never stored in plain text.
-- JWT secret is required and must not remain set to the example placeholder.
-- CORS origins are configured in `.env` through `CORS_ORIGINS`.
-- Event image uploads validate file type and maximum size.
-- Production configuration requires explicit environment settings.
+| Role | Main capabilities |
+| --- | --- |
+| `ATTENDEE` | Browse events, create orders, purchase/claim tickets, view own ticket history |
+| `ORGANIZER` | Manage own events and tickets, submit KYC, manage own check-in staff and event assignments |
+| `CHECK_IN_STAFF` | Validate tickets for events explicitly assigned by its organizer |
+| `ADMIN` | Manage users, moderate events/KYC, and administer system operations |
 
-## Known security constraints
+Protected controllers use `JwtAuthGuard` and `RolesGuard`. Resource-level
+ownership checks further restrict organizers to their own events and staff.
+Unauthenticated requests receive `401`; authenticated users without the
+required role receive `403`.
 
-The current implementation is designed for a local backend service and does not include a full separate identity provider, SSO flow, or multi-tenant RBAC system.
+## Password, token, and configuration controls
+
+- Passwords use bcrypt with 12 salt rounds. Passwords longer than bcrypt's
+  72-byte input limit are rejected.
+- `JWT_SECRET` is required and must be a private value of at least 32
+  characters; the example placeholder is rejected.
+- Database credentials are required environment variables; the example
+  password placeholder is rejected. Do not copy production secrets into
+  `.env.example`.
+- TypeORM has `synchronize: false`; schema changes are applied through
+  migrations. The SQL schema file is used only when PostgreSQL initializes a
+  brand-new data volume.
+- CORS origins are controlled by `CORS_ORIGINS`.
+- File uploads, ticket validation, payment verification, and admin moderation
+  have their own validation and authorization checks.
+
+See [API documentation](./API_DOCUMENTATION.md) for the route catalog and
+[installation and setup](./INSTALLATION_AND_SETUP.md) for environment and
+Docker commands.
