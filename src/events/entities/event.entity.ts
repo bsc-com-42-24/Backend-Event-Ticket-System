@@ -27,6 +27,12 @@ export class Event {
   @Column({ type: 'text' })
   description: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  category: string | null;
+
+  @Column({ name: 'banner_url', type: 'text', nullable: true })
+  imageUrl: string | null;
+
   @Column({ type: 'varchar', length: 150 })
   venue: string;
 
