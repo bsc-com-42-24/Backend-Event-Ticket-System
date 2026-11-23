@@ -214,7 +214,7 @@ export class EventsService {
         );
       }
 
-      const changes = Object.fromEntries(
+      const changes: Record<string, unknown> = Object.fromEntries(
         Object.entries(eventChanges).filter(([, v]) => v !== undefined),
       );
 
@@ -318,3 +318,78 @@ export class EventsService {
         throw new ConflictException('Event is already cancelled');
       }
 
+
+      event.status = EventStatus.CANCELLED;
+      event.cancelledAt = new Date();
+      return this.toResponse(await m.save(event));
+    });
+  }
+
+  private applyStatusTransition(event: Event, nextStatus: EventStatus) {
+    if (nextStatus === EventStatus.PUBLISHED) {
+      if (event.status !== EventStatus.DRAFT && event.status !== EventStatus.CANCELLED && event.status !== EventStatus.PUBLISHED) {
+        throw new ConflictException(`Cannot transition event from ${event.status} to PUBLISHED`);
+      }
+      if (event.endAt <= new Date()) {
+        throw new BadRequestException("Cannot publish an event that has already ended");
+      }
+      event.status = EventStatus.PUBLISHED;
+      event.publishedAt = event.publishedAt ?? new Date();
+      event.cancelledAt = null;
+      return;
+    }
+    if (nextStatus === EventStatus.DRAFT) {
+      if (event.status !== EventStatus.CANCELLED && event.status !== EventStatus.PUBLISHED && event.status !== EventStatus.DRAFT) {
+        throw new ConflictException(`Cannot transition event from ${event.status} to DRAFT`);
+      }
+      event.status = EventStatus.DRAFT;
+      event.cancelledAt = null;
+      return;
+    }
+    if (nextStatus === EventStatus.CANCELLED) {
+      event.status = EventStatus.CANCELLED;
+      event.cancelledAt = new Date();
+      return;
+    }
+    throw new BadRequestException(`Unsupported status transition: ${nextStatus}`);
+  }
+
+  private normalizeImageUrl(url?: string | null): string | null {
+    if (!url) return null;
+    const trimmed = url.trim();
+    const m = trimmed.match(/(\/(?:uploads|images\/events)\/[\w.-]+)$/);
+    return m ? m[1] : trimmed;
+  }
+
+  private async paginate(qb: SelectQueryBuilder<Event>, q: QueryEventsDto) {
+    if (q.search) qb.andWhere("(e.title ILIKE :s OR e.description ILIKE :s OR e.venue ILIKE :s)", { s: `%${q.search}%` });
+    if (q.location) qb.andWhere("(e.location ILIKE :loc OR e.venue ILIKE :loc)", { loc: `%${q.location}%` });
+    if (q.from) qb.andWhere("e.startAt >= :from", { from: q.from });
+    if (q.to) qb.andWhere("e.startAt <= :to", { to: q.to });
+    if (q.availableOnly) qb.andWhere("e.ticketsIssued < e.capacity");
+    const [items, total] = await qb.orderBy("e.startAt", "ASC").skip((q.page - 1) * q.limit).take(q.limit).getManyAndCount();
+    return { data: items.map((e) => this.toResponse(e)), meta: { total, page: q.page, limit: q.limit, totalPages: Math.ceil(total / q.limit) } };
+  }
+
+  private async lockAndGet(m: EntityManager, id: string) {
+    const event = await m.findOne(Event, { where: { id }, lock: { mode: "pessimistic_write" } });
+    if (!event) throw new NotFoundException("Event not found");
+    return event;
+  }
+
+  private canManage(event: Event, user: AuthUser) {
+    return user.role === UserRole.ADMIN || event.organizerId === user.userId;
+  }
+
+  private assertCanManage(event: Event, user: AuthUser) {
+    if (!this.canManage(event, user)) throw new ForbiddenException("You do not have permission to manage this event");
+  }
+
+  private validateDates(start: Date, end: Date) {
+    if (end <= start) throw new BadRequestException("endAt must be after startAt");
+  }
+
+  private toResponse(e: Event) {
+    return { ...e, imageUrl: this.normalizeImageUrl(e.imageUrl), remainingTickets: Math.max(e.capacity - e.ticketsIssued, 0) };
+  }
+}
