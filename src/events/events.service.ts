@@ -183,14 +183,14 @@ export class EventsService {
     const event = await this.repo.findOne({ where: { id } });
 
     if (!event) {
-      throw new NotFoundException('Event not found');
+      throw new NotFoundException('The requested event could not be found.');
     }
 
     if (
       event.status === EventStatus.DRAFT &&
       !(user && this.canManage(event, user))
     ) {
-      throw new NotFoundException('Event not found');
+      throw new NotFoundException('The requested event could not be found.');
     }
 
     return this.toResponse(event);
@@ -386,9 +386,10 @@ export class EventsService {
   }
 
   private validateDates(start: Date, end: Date) {
-    if (end <= start) throw new BadRequestException("endAt must be after startAt");
+    if (end <= start) throw new BadRequestException('The event end date must be later than its start date.');
   }
 
+  // Calculates the remaining tickets without allowing a negative value.
   private toResponse(e: Event) {
     return { ...e, imageUrl: this.normalizeImageUrl(e.imageUrl), remainingTickets: Math.max(e.capacity - e.ticketsIssued, 0) };
   }
