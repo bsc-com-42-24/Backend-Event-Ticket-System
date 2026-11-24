@@ -105,7 +105,7 @@ export class AdminController {
     );
 
     if (rows.length === 0) {
-      throw new NotFoundException('Event not found');
+      throw new NotFoundException('The requested event could not be found.');
     }
 
     await this.dataSource.query(
