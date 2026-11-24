@@ -382,7 +382,7 @@ export class EventsService {
   }
 
   private assertCanManage(event: Event, user: AuthUser) {
-    if (!this.canManage(event, user)) throw new ForbiddenException("You do not have permission to manage this event");
+    if (!this.canManage(event, user)) throw new ForbiddenException( 'You are not authorized to manage this event.');
   }
 
   private validateDates(start: Date, end: Date) {
