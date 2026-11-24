@@ -1,4 +1,21 @@
-# Backend-Event-Ticket-System
-design and develop a web-based event tickets managing and
-publishing platform. You are to develop an API for the event managers that is used to manage and publish their tickets to be purchased and monitored. 
-You are to also develop a secure ticket generator for the event based on the capacity specified by the event planner.
+# Backend Event Ticket System
+
+A web-based event ticket management and publishing platform designed to help event managers create events, manage ticket types, publish events, and monitor ticket sales.
+
+The system provides a secure ticket generation and validation process based on the event capacity specified by the event manager.
+
+## Project Overview
+
+The Backend Event Ticket System provides API services for event management, ticket purchasing, payment processing, and ticket validation.
+
+## Key Features
+
+- User registration and authentication
+- Event creation and management
+- Ticket type management
+- Secure ticket generation
+- Online ticket purchasing
+- Payment processing through PayChangu
+- QR code ticket validation
+- Order and attendance monitoring
+- User role and account management
