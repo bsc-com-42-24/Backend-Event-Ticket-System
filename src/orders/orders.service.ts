@@ -72,7 +72,7 @@ export class OrdersService {
       );
 
       if (eventResult.rows.length === 0) {
-        throw new NotFoundException('Event not found');
+        throw new NotFoundException('The requested event could not be found.');
       }
 
       if (eventResult.rows[0].status !== 'PUBLISHED') {

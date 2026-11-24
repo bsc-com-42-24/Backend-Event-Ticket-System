@@ -89,7 +89,7 @@ export class TicketsService {
         (String(event.organizer_id) !== String(user.userId) &&
           user.role !== UserRole.ADMIN)
       ) {
-        throw new NotFoundException('Event not found');
+        throw new NotFoundException('The requested event could not be found.');
       }
       if (event.status === 'CANCELLED' || event.status === 'COMPLETED') {
         throw new ConflictException(
