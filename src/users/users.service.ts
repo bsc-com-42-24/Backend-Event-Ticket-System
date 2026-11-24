@@ -111,7 +111,7 @@ export class UsersService {
       where: { id: targetUserId },
     });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('The specified user could not be found.');
     }
 
     user.role = role;
