@@ -110,7 +110,7 @@ export class CapacityService {
 
   private async explainFailure(repo: Repository<Event>, eventId: string): Promise<never> {
     const e = await repo.findOne({ where: { id: eventId } });
-    if (!e) throw new NotFoundException('Event not found');
+    if (!e) throw new NotFoundException('The requested event could not be found.');
     if (e.status !== EventStatus.PUBLISHED) {
       throw new ConflictException(`Tickets are not on sale: event is ${e.status}`);
     }
