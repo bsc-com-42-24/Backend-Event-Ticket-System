@@ -63,7 +63,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
     // Only reached with the correct password, so this reveals nothing to
-    // someone guessing emails.
+    // an attacker about whether the account exists or not.
     if (!user.isActive) {
       throw new UnauthorizedException('This account has been disabled');
     }
@@ -85,7 +85,6 @@ export class AuthService {
     };
   }
   
-
   private isUniqueConstraintViolation(error: unknown): boolean {
     if (!(error instanceof QueryFailedError)) {
       return false;
