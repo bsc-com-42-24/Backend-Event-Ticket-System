@@ -111,7 +111,7 @@ export class UsersService {
       where: { id: targetUserId },
     });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('An account with this email address already exists.');
     }
 
     user.role = role;
